@@ -3,6 +3,8 @@ use bio::alignment::{
     Alignment, AlignmentOperation,
 };
 use clap::Parser;
+use colored::Colorize;
+use std::fmt::Write;
 
 /// Strip the sequences from a PDB or mmCIF file.
 #[derive(Parser, Debug)]
@@ -26,6 +28,10 @@ struct Args {
     /// Use local alignment
     #[arg(short, long)]
     local: bool,
+
+    /// The number of characters to show on a single line in the alignment
+    #[arg(short = 'n', long, default_value_t = 50)]
+    line_width: usize,
 }
 
 fn main() {
@@ -53,61 +59,109 @@ fn align(args: &Args, x: &[u8], y: &[u8]) {
     } else {
         aligner.global(x, y)
     };
-    show_alignment(&alignment, x, y, args.semi_global);
+    show_alignment(&alignment, x, y, args.semi_global, args.line_width);
 }
 
-fn show_alignment(alignment: &Alignment, sequence_x: &[u8], sequence_y: &[u8], semi_global: bool) {
-    let stats = score_stats(alignment, sequence_x, sequence_y);
+fn show_alignment(
+    alignment: &Alignment,
+    sequence_x: &[u8],
+    sequence_y: &[u8],
+    semi_global: bool,
+    line_width: usize,
+) {
+    let (identical, gaps, length) = score_stats(alignment, sequence_x, sequence_y);
 
     println!(
-        "Identity: {}, Gaps: {}, Score: {}{}",
-        stats.0,
-        stats.1,
-        alignment.score,
+        "Identity: {} {}, Gaps: {:} {}, Score: {}{}\n",
+        format!("{:.3}", identical as f64 / length as f64).blue(),
+        format!("({}/{})", identical, length).dimmed(),
+        format!("{:.3}", gaps as f64 / length as f64).green(),
+        format!("({}/{})", gaps, length).dimmed(),
+        format!("{}", alignment.score).yellow(),
         if semi_global {
-            format!(", CIGAR: {}", alignment.cigar(false))
+            format!("\nCIGAR: {}", alignment.cigar(false))
         } else {
             String::new()
         }
     );
 
-    let mut top = Vec::new();
-    let mut bottom = Vec::new();
+    macro_rules! line {
+        ($lines:ident, $x:expr, $y: expr, $c:expr, $colour:ident) => {
+            write!(&mut $lines.0, "{}", $x.$colour()).unwrap();
+            write!(&mut $lines.1, "{}", $y.$colour()).unwrap();
+            write!(&mut $lines.2, "{}", $c.$colour()).unwrap();
+        };
+    }
+
+    let mut lines = (String::new(), String::new(), String::new());
+    let mut numbers = String::new();
     let mut x = alignment.xstart;
     let mut y = alignment.ystart;
-    for step in &alignment.operations {
+    for (index, step) in alignment.operations.iter().enumerate() {
         match step {
             AlignmentOperation::Del => {
-                top.push(b'-');
-                bottom.push(sequence_y[y]);
+                line!(
+                    lines,
+                    "-",
+                    String::from_utf8_lossy(&[sequence_y[y]]),
+                    "+",
+                    yellow
+                );
                 y += 1;
             }
             AlignmentOperation::Ins => {
-                top.push(sequence_x[x]);
-                bottom.push(b'-');
+                line!(
+                    lines,
+                    String::from_utf8_lossy(&[sequence_x[x]]),
+                    "-",
+                    "+",
+                    yellow
+                );
                 x += 1;
             }
             AlignmentOperation::Subst => {
-                top.push(sequence_x[x]);
-                bottom.push(sequence_y[y]);
+                line!(
+                    lines,
+                    String::from_utf8_lossy(&[sequence_x[x]]),
+                    String::from_utf8_lossy(&[sequence_y[y]]),
+                    "*",
+                    red
+                );
                 x += 1;
                 y += 1;
             }
             AlignmentOperation::Match => {
-                top.push(sequence_x[x]);
-                bottom.push(sequence_y[y]);
+                line!(
+                    lines,
+                    String::from_utf8_lossy(&[sequence_x[x]]),
+                    String::from_utf8_lossy(&[sequence_y[y]]),
+                    " ",
+                    normal
+                );
                 x += 1;
                 y += 1;
             }
             AlignmentOperation::Xclip(_) => todo!(),
             AlignmentOperation::Yclip(_) => todo!(),
         }
+        write!(&mut numbers, " ").unwrap();
+        if (index + 1) % 10 == 0 {
+            numbers.truncate(numbers.len() - number_length(index + 1));
+            write!(&mut numbers, "{}", index + 1).unwrap();
+        }
+        if (index + 1) % line_width == 0 {
+            println!("{}", numbers.dimmed());
+            println!("{}", lines.0);
+            println!("{}", lines.1);
+            println!("{}", lines.2);
+            lines = (String::new(), String::new(), String::new());
+            numbers = String::new();
+        }
     }
-    const CHUNK_SIZE: usize = 50;
-    for section in top.chunks(CHUNK_SIZE).zip(bottom.chunks(CHUNK_SIZE)) {
-        println!("{}", String::from_utf8_lossy(section.0));
-        println!("{}\n", String::from_utf8_lossy(section.1));
-    }
+    println!("{}", numbers.dimmed());
+    println!("{}", lines.0);
+    println!("{}", lines.1);
+    println!("{}", lines.2);
 }
 
 pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -> i32> {
@@ -127,7 +181,11 @@ pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -
     Scoring::new(gap_open, gap_extend, match_fn)
 }
 
-pub fn score_stats(alignment: &Alignment, sequence_x: &[u8], sequence_y: &[u8]) -> (f64, f64) {
+pub fn score_stats(
+    alignment: &Alignment,
+    sequence_x: &[u8],
+    sequence_y: &[u8],
+) -> (usize, usize, usize) {
     let x_len = sequence_x.len();
     let y_len = sequence_y.len();
     let mut x = alignment.xstart;
@@ -159,8 +217,26 @@ pub fn score_stats(alignment: &Alignment, sequence_x: &[u8], sequence_y: &[u8]) 
     }
     debug_assert!(x == alignment.xend);
     debug_assert!(y == alignment.yend);
-    (
-        identical as f64 / (x_len).max(y_len) as f64,
-        gaps as f64 / x_len.max(y_len) as f64,
-    )
+    (identical, gaps, (x_len).max(y_len))
+}
+
+fn number_length(i: usize) -> usize {
+    if i == 0 {
+        1
+    } else {
+        i.ilog10() as usize + 1
+    }
+}
+
+#[test]
+fn number_length_test() {
+    assert_eq!(number_length(0), 1);
+    assert_eq!(number_length(1), 1);
+    assert_eq!(number_length(9), 1);
+    assert_eq!(number_length(10), 2);
+    assert_eq!(number_length(11), 2);
+    assert_eq!(number_length(99), 2);
+    assert_eq!(number_length(100), 3);
+    assert_eq!(number_length(1000), 4);
+    assert_eq!(number_length(10000), 5);
 }

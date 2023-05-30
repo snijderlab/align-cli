@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 bio = "*"
 clap ={version="4", features=["derive"]}
+colored = "2"
