@@ -69,12 +69,14 @@ fn show_alignment(
     semi_global: bool,
     line_width: usize,
 ) {
-    let (identical, gaps, length) = score_stats(alignment, sequence_x, sequence_y);
+    let (identical, similar, gaps, length) = score_stats(alignment, sequence_x, sequence_y);
 
     println!(
-        "Identity: {} {}, Gaps: {:} {}, Score: {}{}\n",
+        "Identity: {} {}, Similarity: {} {}, Gaps: {:} {}, Score: {}{}\n",
         format!("{:.3}", identical as f64 / length as f64).blue(),
         format!("({}/{})", identical, length).dimmed(),
+        format!("{:.3}", similar as f64 / length as f64).cyan(),
+        format!("({}/{})", similar, length).dimmed(),
         format!("{:.3}", gaps as f64 / length as f64).green(),
         format!("({}/{})", gaps, length).dimmed(),
         format!("{}", alignment.score).yellow(),
@@ -97,6 +99,7 @@ fn show_alignment(
     let mut numbers = String::new();
     let mut x = alignment.xstart;
     let mut y = alignment.ystart;
+    // Similar: · Gap: ◯ Identical: ∘ ⏺ ∘◯◦ ⚪ ⚫ ⬤ ⭘ 🞄 ∘ ○ ● ◦ ◯ ⴰ ⨉⨯+-
     for (index, step) in alignment.operations.iter().enumerate() {
         match step {
             AlignmentOperation::Del => {
@@ -120,13 +123,23 @@ fn show_alignment(
                 x += 1;
             }
             AlignmentOperation::Subst => {
-                line!(
-                    lines,
-                    String::from_utf8_lossy(&[sequence_x[x]]),
-                    String::from_utf8_lossy(&[sequence_y[y]]),
-                    "*",
-                    red
-                );
+                if SIMILAR.contains(&(sequence_x[x], sequence_y[y])) {
+                    line!(
+                        lines,
+                        String::from_utf8_lossy(&[sequence_x[x]]),
+                        String::from_utf8_lossy(&[sequence_y[y]]),
+                        "-",
+                        green
+                    );
+                } else {
+                    line!(
+                        lines,
+                        String::from_utf8_lossy(&[sequence_x[x]]),
+                        String::from_utf8_lossy(&[sequence_y[y]]),
+                        "⨯",
+                        red
+                    );
+                }
                 x += 1;
                 y += 1;
             }
@@ -185,12 +198,13 @@ pub fn score_stats(
     alignment: &Alignment,
     sequence_x: &[u8],
     sequence_y: &[u8],
-) -> (usize, usize, usize) {
+) -> (usize, usize, usize, usize) {
     let x_len = sequence_x.len();
     let y_len = sequence_y.len();
     let mut x = alignment.xstart;
     let mut y = alignment.ystart;
     let mut identical = 0;
+    let mut similar = 0;
     let mut gaps = 0;
     for step in &alignment.operations {
         match step {
@@ -203,6 +217,9 @@ pub fn score_stats(
                 gaps += 1;
             }
             AlignmentOperation::Subst => {
+                if SIMILAR.contains(&(sequence_x[x], sequence_y[y])) {
+                    similar += 1;
+                }
                 x += 1;
                 y += 1;
             }
@@ -217,7 +234,7 @@ pub fn score_stats(
     }
     debug_assert!(x == alignment.xend);
     debug_assert!(y == alignment.yend);
-    (identical, gaps, (x_len).max(y_len))
+    (identical, similar + identical, gaps, (x_len).max(y_len))
 }
 
 fn number_length(i: usize) -> usize {
@@ -227,6 +244,8 @@ fn number_length(i: usize) -> usize {
         i.ilog10() as usize + 1
     }
 }
+
+const SIMILAR: &[(u8, u8)] = &[(b'I', b'L'), (b'L', b'I'), (b'D', b'N'), (b'N', b'D')];
 
 #[test]
 fn number_length_test() {
