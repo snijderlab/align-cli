@@ -53,18 +53,22 @@ fn align(args: &Args, x: &[u8], y: &[u8]) {
     } else {
         aligner.global(x, y)
     };
-    show_alignment(&alignment, x, y);
+    show_alignment(&alignment, x, y, args.semi_global);
 }
 
-fn show_alignment(alignment: &Alignment, sequence_x: &[u8], sequence_y: &[u8]) {
+fn show_alignment(alignment: &Alignment, sequence_x: &[u8], sequence_y: &[u8], semi_global: bool) {
     let stats = score_stats(alignment, sequence_x, sequence_y);
 
     println!(
-        "Identity: {}, Gaps: {}, Score: {}, CIGAR: {}",
+        "Identity: {}, Gaps: {}, Score: {}{}",
         stats.0,
         stats.1,
         alignment.score,
-        alignment.cigar(false)
+        if semi_global {
+            format!(", CIGAR: {}", alignment.cigar(false))
+        } else {
+            String::new()
+        }
     );
 
     let mut top = Vec::new();
