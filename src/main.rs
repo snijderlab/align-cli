@@ -6,10 +6,10 @@ use clap::Parser;
 use colored::Colorize;
 use std::fmt::Write;
 
-/// Strip the sequences from a PDB or mmCIF file.
 #[derive(Parser, Debug)]
+#[command(author, version, about, long_about)]
 struct Args {
-    /// first alignment
+    /// First sequence
     #[arg()]
     x: String,
 

@@ -2,6 +2,8 @@
 name = "align"
 version = "0.1.0"
 edition = "2021"
+authors = ["Douwe Schulte <d.schulte@uu.nl>"]
+description = "A command line interface for easily aligning two sequences."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
