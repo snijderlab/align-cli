@@ -5,9 +5,9 @@ edition = "2021"
 authors = ["Douwe Schulte <d.schulte@uu.nl>"]
 description = "A command line interface for easily aligning two sequences."
 license = "MIT"
-repository = "https://github.com/snijderlab/align"
+repository = "https://github.com/snijderlab/align-cli"
 readme = "README.md"
-include = ["src/**/*", "LICENSE", "README.md"]
+include = ["inc/**/*", "src/**/*", "LICENSE", "README.md"]
 
 [[bin]]
 name = "align"
