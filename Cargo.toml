@@ -14,7 +14,7 @@ name = "align"
 path = "src/main.rs"
 
 [dependencies]
-bio = "*"
+bio = "1.2"
 clap ={version="4", features=["derive"]}
 colored = "2"
-rustyms = "*"
+rustyms = "0.1"
