@@ -4,6 +4,7 @@ use bio::alignment::{
 };
 use clap::Parser;
 use colored::Colorize;
+use rustyms::{MonoIsotopic, Peptide};
 use std::fmt::Write;
 
 #[derive(Parser, Debug)]
@@ -29,6 +30,10 @@ struct Args {
     #[arg(short, long)]
     local: bool,
 
+    /// Use mass alignment, interpreting the sequences as ProForma
+    #[arg(short, long)]
+    mass: bool,
+
     /// The number of characters to show on a single line in the alignment
     #[arg(short = 'n', long, default_value_t = 50)]
     line_width: usize,
@@ -40,7 +45,19 @@ fn main() {
     {
         panic!("Cannot have multiple alignment types at the same time")
     }
-    if args.x.contains(',') {
+    if args.mass {
+        let a = Peptide::pro_forma(&args.x).unwrap();
+        let b = Peptide::pro_forma(&args.y).unwrap();
+        let ty = if args.local {
+            rustyms::align::Type::Local
+        } else if args.semi_global {
+            rustyms::align::Type::GlobalForB
+        } else {
+            rustyms::align::Type::Global
+        };
+        let alignment = rustyms::align::align::<MonoIsotopic>(a, b, rustyms::align::BLOSUM62, ty);
+        println!("{:?}\n\n{}", alignment, alignment.summary());
+    } else if args.x.contains(',') {
         for (x, y) in args.x.split(',').zip(args.y.split(',')) {
             align(&args, x.as_bytes(), y.as_bytes());
         }
