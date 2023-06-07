@@ -11,7 +11,7 @@ include = ["inc/**/*", "src/**/*", "LICENSE", "README.md"]
 
 [[bin]]
 name = "align"
-path = "sc/main.rs"
+path = "src/main.rs"
 
 [dependencies]
 bio = "*"
