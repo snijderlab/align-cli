@@ -1,0 +1,256 @@
+use bio::alignment::{Alignment, AlignmentOperation};
+use colored::Colorize;
+use rustyms::*;
+use std::fmt::Write;
+
+use crate::stats::*;
+
+pub fn show_alignment(
+    alignment: &Alignment,
+    sequence_x: &[u8],
+    sequence_y: &[u8],
+    semi_global: bool,
+    line_width: usize,
+) {
+    let (identical, similar, gaps, length) = score_stats(alignment, sequence_x, sequence_y);
+
+    println!(
+        "Identity: {} {}, Similarity: {} {}, Gaps: {:} {}, Score: {}{}\n",
+        format!("{:.3}", identical as f64 / length as f64).blue(),
+        format!("({}/{})", identical, length).dimmed(),
+        format!("{:.3}", similar as f64 / length as f64).cyan(),
+        format!("({}/{})", similar, length).dimmed(),
+        format!("{:.3}", gaps as f64 / length as f64).green(),
+        format!("({}/{})", gaps, length).dimmed(),
+        format!("{}", alignment.score).yellow(),
+        if semi_global {
+            format!("\nCIGAR: {}", alignment.cigar(false))
+        } else {
+            String::new()
+        }
+    );
+
+    macro_rules! line {
+        ($lines:ident, $x:expr, $y: expr, $c:expr, $colour:ident) => {
+            write!(&mut $lines.0, "{}", $x.$colour()).unwrap();
+            write!(&mut $lines.1, "{}", $y.$colour()).unwrap();
+            write!(&mut $lines.2, "{}", $c.$colour()).unwrap();
+        };
+    }
+
+    let mut lines = (String::new(), String::new(), String::new());
+    let mut numbers = String::new();
+    let mut x = alignment.xstart;
+    let mut y = alignment.ystart;
+    // Similar: · Gap: ◯ Identical: ∘ ⏺ ∘◯◦ ⚪ ⚫ ⬤ ⭘ 🞄 ∘ ○ ● ◦ ◯ ⴰ ⨉⨯+-
+    for (index, step) in alignment.operations.iter().enumerate() {
+        match step {
+            AlignmentOperation::Del => {
+                line!(
+                    lines,
+                    "-",
+                    String::from_utf8_lossy(&[sequence_y[y]]),
+                    "+",
+                    yellow
+                );
+                y += 1;
+            }
+            AlignmentOperation::Ins => {
+                line!(
+                    lines,
+                    String::from_utf8_lossy(&[sequence_x[x]]),
+                    "-",
+                    "+",
+                    yellow
+                );
+                x += 1;
+            }
+            AlignmentOperation::Subst => {
+                if SIMILAR.contains(&(sequence_x[x], sequence_y[y])) {
+                    line!(
+                        lines,
+                        String::from_utf8_lossy(&[sequence_x[x]]),
+                        String::from_utf8_lossy(&[sequence_y[y]]),
+                        "-",
+                        green
+                    );
+                } else {
+                    line!(
+                        lines,
+                        String::from_utf8_lossy(&[sequence_x[x]]),
+                        String::from_utf8_lossy(&[sequence_y[y]]),
+                        "⨯",
+                        red
+                    );
+                }
+                x += 1;
+                y += 1;
+            }
+            AlignmentOperation::Match => {
+                line!(
+                    lines,
+                    String::from_utf8_lossy(&[sequence_x[x]]),
+                    String::from_utf8_lossy(&[sequence_y[y]]),
+                    " ",
+                    normal
+                );
+                x += 1;
+                y += 1;
+            }
+            AlignmentOperation::Xclip(_) => todo!(),
+            AlignmentOperation::Yclip(_) => todo!(),
+        }
+        write!(&mut numbers, " ").unwrap();
+        if (index + 1) % 10 == 0 {
+            numbers.truncate(numbers.len() - number_length(index + 1));
+            write!(&mut numbers, "{}", index + 1).unwrap();
+        }
+        if (index + 1) % line_width == 0 {
+            println!("{}", numbers.dimmed());
+            println!("{}", lines.0);
+            println!("{}", lines.1);
+            println!("{}", lines.2);
+            lines = (String::new(), String::new(), String::new());
+            numbers = String::new();
+        }
+    }
+    println!("{}", numbers.dimmed());
+    println!("{}", lines.0);
+    println!("{}", lines.1);
+    println!("{}", lines.2);
+}
+
+pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, global: bool, line_width: usize) {
+    let (identical, gap, length) = alignment.stats();
+
+    println!(
+        "Identity: {} {}, Gaps: {} {}, Score: {}{}\nPath: {}\n",
+        format!("{:.3}", identical as f64 / length as f64).blue(),
+        format!("({}/{})", identical, length).dimmed(),
+        format!("{:.3}", gap as f64 / length as f64).cyan(),
+        format!("({}/{})", gap, length).dimmed(),
+        format!("{}", alignment.score).green(),
+        if global {
+            format!(
+                ", Mass difference: (mono) {} Da (avg) {} Da (ppm) {} ",
+                format!("{:.2}", alignment.mass_difference::<MonoIsotopic>().value).yellow(),
+                format!("{:.2}", alignment.mass_difference::<AverageWeight>().value).yellow(),
+                format!("{:.2}", alignment.ppm::<MonoIsotopic>()).yellow(),
+            )
+        } else {
+            String::new()
+        },
+        alignment
+            .path
+            .iter()
+            .map(align::Piece::short)
+            .collect::<String>(),
+    );
+
+    let mut lines = (String::new(), String::new(), String::new());
+    let mut numbers = String::new();
+    let mut a = alignment.start_a;
+    let mut b = alignment.start_b;
+
+    enum StepType {
+        Insertion,
+        Deletion,
+        Match,
+        Mismatch,
+        Special,
+    }
+
+    for (index, step) in alignment.path.iter().enumerate() {
+        let ty = match (step.step_a, step.step_b) {
+            (0, 1) => StepType::Insertion,
+            (1, 0) => StepType::Deletion,
+            (1, 1) if alignment.seq_a.sequence[a] == alignment.seq_b.sequence[b] => StepType::Match,
+            (1, 1) => StepType::Mismatch,
+            _ => StepType::Special,
+        };
+        let (colour, ch) = match ty {
+            StepType::Insertion => ("yellow", "+"),
+            StepType::Deletion => ("yellow", "+"),
+            StepType::Match => ("white", " "),
+            StepType::Mismatch => ("red", "⨯"),
+            StepType::Special => ("yellow", "-"),
+        };
+        let len = step.step_a.max(step.step_b) as usize;
+        write!(
+            &mut lines.0,
+            "{}",
+            if step.step_a == 0 {
+                "-".repeat(len)
+            } else {
+                format!(
+                    "{:·<width$}",
+                    alignment.seq_a.sequence[a..a + step.step_a as usize]
+                        .iter()
+                        .map(|a| a.0.char())
+                        .collect::<String>(),
+                    width = len
+                )
+            }
+            .color(
+                if alignment.seq_a.sequence[a..a + step.step_a as usize]
+                    .iter()
+                    .any(|a| a.1.is_some())
+                {
+                    "blue"
+                } else {
+                    colour
+                }
+            )
+        )
+        .unwrap();
+        write!(
+            &mut lines.1,
+            "{}",
+            if step.step_b == 0 {
+                "-".repeat(len)
+            } else {
+                format!(
+                    "{:·<width$}",
+                    alignment.seq_b.sequence[b..b + step.step_b as usize]
+                        .iter()
+                        .map(|a| a.0.char())
+                        .collect::<String>(),
+                    width = len
+                )
+            }
+            .color(
+                if alignment.seq_b.sequence[b..b + step.step_b as usize]
+                    .iter()
+                    .any(|a| a.1.is_some())
+                {
+                    "blue"
+                } else {
+                    colour
+                }
+            )
+        )
+        .unwrap();
+        write!(&mut lines.2, "{}", ch.repeat(len).color(colour)).unwrap();
+
+        a += step.step_a as usize;
+        b += step.step_b as usize;
+
+        write!(&mut numbers, " ").unwrap();
+        if (index + 1) % 10 == 0 {
+            numbers.truncate(numbers.len() - number_length(index + 1));
+            write!(&mut numbers, "{}", index + 1).unwrap();
+        }
+        if (index + 1) % line_width == 0 {
+            println!("{}", numbers.dimmed());
+            println!("{}", lines.0);
+            println!("{}", lines.1);
+            println!("{}", lines.2);
+            lines = (String::new(), String::new(), String::new());
+            numbers = String::new();
+        }
+    }
+    println!("{}", numbers.dimmed());
+    println!("{}", lines.0);
+    println!("{}", lines.1);
+    println!("{}", lines.2);
+}
