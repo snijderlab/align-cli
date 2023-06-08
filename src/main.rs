@@ -55,11 +55,7 @@ fn main() {
             rustyms::align::Type::Global
         };
         let alignment = rustyms::align::align::<MonoIsotopic>(a, b, rustyms::align::BLOSUM62, ty);
-        show_mass_alignment(
-            &alignment,
-            ty == rustyms::align::Type::Global,
-            args.line_width,
-        );
+        show_mass_alignment(&alignment, args.line_width);
     } else if args.x.contains(',') {
         for (x, y) in args.x.split(',').zip(args.y.split(',')) {
             align(&args, x.as_bytes(), y.as_bytes());

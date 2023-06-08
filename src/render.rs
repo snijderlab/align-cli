@@ -120,26 +120,19 @@ pub fn show_alignment(
     println!("{}", lines.2);
 }
 
-pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, global: bool, line_width: usize) {
+pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: usize) {
     let (identical, gap, length) = alignment.stats();
 
     println!(
-        "Identity: {} {}, Gaps: {} {}, Score: {}{}\nPath: {}\n",
+        "Identity: {} {}, Gaps: {} {}, Score: {}, Mass difference: (mono) {} Da (avg) {} Da (ppm) {} \nPath: {}\n",
         format!("{:.3}", identical as f64 / length as f64).blue(),
         format!("({}/{})", identical, length).dimmed(),
         format!("{:.3}", gap as f64 / length as f64).cyan(),
         format!("({}/{})", gap, length).dimmed(),
         format!("{}", alignment.score).green(),
-        if global {
-            format!(
-                ", Mass difference: (mono) {} Da (avg) {} Da (ppm) {} ",
-                format!("{:.2}", alignment.mass_difference::<MonoIsotopic>().value).yellow(),
-                format!("{:.2}", alignment.mass_difference::<AverageWeight>().value).yellow(),
-                format!("{:.2}", alignment.ppm::<MonoIsotopic>()).yellow(),
-            )
-        } else {
-            String::new()
-        },
+        format!("{:.2}", alignment.mass_difference::<MonoIsotopic>().value).yellow(),
+        format!("{:.2}", alignment.mass_difference::<AverageWeight>().value).yellow(),
+        format!("{:.2}", alignment.ppm::<MonoIsotopic>()).yellow(),
         alignment
             .path
             .iter()
