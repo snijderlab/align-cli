@@ -30,6 +30,6 @@ AKTGLSHLGYGMDV AKEGLAFLGYGMDV
 
 ## How to install 
 
-1. First install [cargo](https://www.rust-lang.org/tools/install).
+1. First install [Rust](https://www.rust-lang.org/tools/install).
 1. Install the tool using cargo (part of Rust) `cargo install align-cli`
 1. Use! `align ANA AGGA -m`
