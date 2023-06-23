@@ -130,14 +130,10 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
         format!("{:.3}", gap as f64 / length as f64).cyan(),
         format!("({}/{})", gap, length).dimmed(),
         format!("{}", alignment.score).green(),
-        format!("{:.2}", alignment.mass_difference::<MonoIsotopic>().value).yellow(),
-        format!("{:.2}", alignment.mass_difference::<AverageWeight>().value).yellow(),
-        format!("{:.2}", alignment.ppm::<MonoIsotopic>()).yellow(),
-        alignment
-            .path
-            .iter()
-            .map(align::Piece::short)
-            .collect::<String>(),
+        format!("{:.2}", alignment.mass_difference::<MonoIsotopic>().map_or("??".to_string(), |m| m.value.to_string())).yellow(),
+        format!("{:.2}", alignment.mass_difference::<AverageWeight>().map_or("??".to_string(), |m| m.value.to_string())).yellow(),
+        format!("{:.2}", alignment.ppm::<MonoIsotopic>().map_or("??".to_string(), |m| m.to_string())).yellow(),
+        alignment.short(),
     );
 
     let mut lines = (String::new(), String::new(), String::new());
@@ -179,7 +175,7 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
                     "{:·<width$}",
                     alignment.seq_a.sequence[a..a + step.step_a as usize]
                         .iter()
-                        .map(|a| a.0.char())
+                        .map(|a| a.aminoacid.char())
                         .collect::<String>(),
                     width = len
                 )
@@ -187,7 +183,7 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
             .color(
                 if alignment.seq_a.sequence[a..a + step.step_a as usize]
                     .iter()
-                    .any(|a| a.1.is_some())
+                    .any(|a| !a.modifications.is_empty())
                 {
                     "blue"
                 } else {
@@ -206,7 +202,7 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
                     "{:·<width$}",
                     alignment.seq_b.sequence[b..b + step.step_b as usize]
                         .iter()
-                        .map(|a| a.0.char())
+                        .map(|a| a.aminoacid.char())
                         .collect::<String>(),
                     width = len
                 )
@@ -214,7 +210,7 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
             .color(
                 if alignment.seq_b.sequence[b..b + step.step_b as usize]
                     .iter()
-                    .any(|a| a.1.is_some())
+                    .any(|a| !a.modifications.is_empty())
                 {
                     "blue"
                 } else {

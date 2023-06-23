@@ -22,14 +22,14 @@ Options:
   -V, --version                  Print version
 ```
 
-## Example usage
-```
-AKTGLSHLGYGMDV AKEGLAFLGYGMDV
-```
-![example result](inc/example.png)
-
 ## How to install 
 
 1. First install [Rust](https://www.rust-lang.org/tools/install).
 1. Install the tool using cargo (part of Rust) `cargo install align-cli`
 1. Use! `align ANA AGGA -m`
+
+## Example usage
+```
+AKTGLSHLGYGMDV AKEGLAFLGYGMDV
+```
+![example result](inc/example.png)
