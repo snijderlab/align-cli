@@ -1,5 +1,6 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
+use colored::Colorize;
 use rustyms::{MonoIsotopic, Peptide};
 
 mod render;
@@ -45,17 +46,38 @@ fn main() {
         panic!("Cannot have multiple alignment types at the same time")
     }
     if args.mass {
-        let a = Peptide::pro_forma(&args.x).unwrap();
-        let b = Peptide::pro_forma(&args.y).unwrap();
-        let ty = if args.local {
-            rustyms::align::Type::Local
-        } else if args.semi_global {
-            rustyms::align::Type::GlobalForB
+        let a = Peptide::pro_forma(&args.x);
+        let b = Peptide::pro_forma(&args.y);
+        if let (Ok(a), Ok(b)) = (&a, &b) {
+            let ty = if args.local {
+                rustyms::align::Type::Local
+            } else if args.semi_global {
+                rustyms::align::Type::GlobalForB
+            } else {
+                rustyms::align::Type::Global
+            };
+            let alignment = rustyms::align::align::<MonoIsotopic>(
+                a.clone(),
+                b.clone(),
+                rustyms::align::BLOSUM62,
+                ty,
+            );
+            show_mass_alignment(&alignment, args.line_width);
         } else {
-            rustyms::align::Type::Global
-        };
-        let alignment = rustyms::align::align::<MonoIsotopic>(a, b, rustyms::align::BLOSUM62, ty);
-        show_mass_alignment(&alignment, args.line_width);
+            println!("{}", "Error".red());
+            if a.is_err() {
+                println!(
+                    "Sequence A is not a valid Pro Forma sequence\nMessage: {}\n",
+                    a.err().unwrap()
+                )
+            }
+            if b.is_err() {
+                println!(
+                    "Sequence B is not a valid Pro Forma sequence\nMessage: {}\n",
+                    b.err().unwrap()
+                )
+            }
+        }
     } else if args.x.contains(',') {
         for (x, y) in args.x.split(',').zip(args.y.split(',')) {
             align(&args, x.as_bytes(), y.as_bytes());

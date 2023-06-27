@@ -130,9 +130,9 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
         format!("{:.3}", gap as f64 / length as f64).cyan(),
         format!("({}/{})", gap, length).dimmed(),
         format!("{}", alignment.score).green(),
-        format!("{:.2}", alignment.mass_difference::<MonoIsotopic>().map_or("??".to_string(), |m| m.value.to_string())).yellow(),
-        format!("{:.2}", alignment.mass_difference::<AverageWeight>().map_or("??".to_string(), |m| m.value.to_string())).yellow(),
-        format!("{:.2}", alignment.ppm::<MonoIsotopic>().map_or("??".to_string(), |m| m.to_string())).yellow(),
+        alignment.mass_difference::<MonoIsotopic>().map_or("??".to_string(), |m| format!("{:.2}", m.value)).yellow(),
+        alignment.mass_difference::<AverageWeight>().map_or("??".to_string(), |m| format!("{:.2}", m.value)).yellow(),
+        alignment.ppm::<MonoIsotopic>().map_or("??".to_string(), |m| format!("{:.2}", m)).yellow(),
         alignment.short(),
     );
 

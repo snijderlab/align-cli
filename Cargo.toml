@@ -1,6 +1,6 @@
 [package]
 name = "align-cli"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["Douwe Schulte <d.schulte@uu.nl>"]
 description = "A command line interface for easily aligning two sequences."
