@@ -1,7 +1,7 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
 use colored::Colorize;
-use rustyms::{MonoIsotopic, Peptide};
+use rustyms::Peptide;
 
 mod render;
 mod stats;
@@ -56,12 +56,8 @@ fn main() {
             } else {
                 rustyms::align::Type::Global
             };
-            let alignment = rustyms::align::align::<MonoIsotopic>(
-                a.clone(),
-                b.clone(),
-                rustyms::align::BLOSUM62,
-                ty,
-            );
+            let alignment =
+                rustyms::align::align(a.clone(), b.clone(), rustyms::align::BLOSUM62, ty);
             show_mass_alignment(&alignment, args.line_width);
         } else {
             println!("{}", "Error".red());

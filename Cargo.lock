@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "align-cli"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "bio",
  "clap",
@@ -809,9 +809,9 @@ checksum = "4f3208ce4d8448b3f3e7d168a73f5e0c43a61e32930de3bceeccedb388b6bf06"
 
 [[package]]
 name = "rustyms"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "216c7fcb642ee60bc54affb06036121f969fd0a9493cd568411528a75e33ae72"
+checksum = "df0c1f69859feb11eebf2f0ffe5007987c6afaf96445f09c16b9003b4010ae0f"
 dependencies = [
  "itertools 0.11.0",
  "regex",

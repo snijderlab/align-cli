@@ -51,6 +51,7 @@ pub fn number_length(i: usize) -> usize {
     }
 }
 
+// TODO: Similar is any pair of AA that score above 0 in the matrix (general definition)
 pub const SIMILAR: &[(u8, u8)] = &[(b'I', b'L'), (b'L', b'I'), (b'D', b'N'), (b'N', b'D')];
 
 #[test]

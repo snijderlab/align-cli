@@ -1,6 +1,5 @@
 use bio::alignment::{Alignment, AlignmentOperation};
 use colored::Colorize;
-use rustyms::*;
 use std::fmt::Write;
 
 use crate::stats::*;
@@ -124,15 +123,20 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
     let (identical, gap, length) = alignment.stats();
 
     println!(
-        "Identity: {} {}, Gaps: {} {}, Score: {}, Mass difference: (mono) {} Da (avg) {} Da (ppm) {} \nPath: {}\n",
+        "Identity: {} {}, Gaps: {} {}, Score: {}, Mass difference: {} Da (ppm) {} \nPath: {}\n",
         format!("{:.3}", identical as f64 / length as f64).blue(),
         format!("({}/{})", identical, length).dimmed(),
         format!("{:.3}", gap as f64 / length as f64).cyan(),
         format!("({}/{})", gap, length).dimmed(),
         format!("{}", alignment.score).green(),
-        alignment.mass_difference::<MonoIsotopic>().map_or("??".to_string(), |m| format!("{:.2}", m.value)).yellow(),
-        alignment.mass_difference::<AverageWeight>().map_or("??".to_string(), |m| format!("{:.2}", m.value)).yellow(),
-        alignment.ppm::<MonoIsotopic>().map_or("??".to_string(), |m| format!("{:.2}", m)).yellow(),
+        alignment
+            .mass_difference()
+            .map_or("??".to_string(), |m| format!("{:.2}", m.value))
+            .yellow(),
+        alignment
+            .ppm()
+            .map_or("??".to_string(), |m| format!("{:.2}", m))
+            .yellow(),
         alignment.short(),
     );
 
