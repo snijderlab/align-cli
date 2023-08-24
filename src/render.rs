@@ -1,5 +1,6 @@
 use bio::alignment::{Alignment, AlignmentOperation};
 use colored::Colorize;
+use rustyms::align::MatchType;
 use std::fmt::Write;
 
 use crate::stats::*;
@@ -145,6 +146,7 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
     let mut a = alignment.start_a;
     let mut b = alignment.start_b;
 
+    #[derive(PartialEq, Eq)]
     enum StepType {
         Insertion,
         Deletion,
@@ -154,11 +156,13 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
     }
 
     for (index, step) in alignment.path.iter().enumerate() {
-        let ty = match (step.step_a, step.step_b) {
-            (0, 1) => StepType::Insertion,
-            (1, 0) => StepType::Deletion,
-            (1, 1) if alignment.seq_a.sequence[a] == alignment.seq_b.sequence[b] => StepType::Match,
-            (1, 1) => StepType::Mismatch,
+        let ty = match (step.match_type, step.step_a, step.step_b) {
+            (MatchType::Isobaric, _, _) => StepType::Special, // Catch any 1/1 isobaric sets before they are counted as Match/Mismatch
+            (MatchType::FullIdentity, _, _) => StepType::Match,
+            (MatchType::IdentityMassMismatch, _, _) => StepType::Match,
+            (MatchType::Mismatch, _, _) => StepType::Mismatch,
+            (_, 0, 1) => StepType::Insertion,
+            (_, 1, 0) => StepType::Deletion,
             _ => StepType::Special,
         };
         let (colour, ch) = match ty {
@@ -166,7 +170,7 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
             StepType::Deletion => ("yellow", "+"),
             StepType::Match => ("white", " "),
             StepType::Mismatch => ("red", "⨯"),
-            StepType::Special => ("yellow", "-"),
+            StepType::Special => ("yellow", "-"), // ⇤⇥ ⤚---⤙ ├─┤ ║ ⤚⤙ l╴r╶
         };
         let len = step.step_a.max(step.step_b) as usize;
         write!(
@@ -223,7 +227,16 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
             )
         )
         .unwrap();
-        write!(&mut lines.2, "{}", ch.repeat(len).color(colour)).unwrap();
+        let bottom = if ty == StepType::Special {
+            match len {
+                1 => "─".to_string(),
+                2 => "╶╴".to_string(),
+                n => format!("╶{}╴", "─".repeat(n - 2)),
+            }
+        } else {
+            ch.repeat(len)
+        };
+        write!(&mut lines.2, "{}", bottom.color(colour)).unwrap();
 
         a += step.step_a as usize;
         b += step.step_b as usize;

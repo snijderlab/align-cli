@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "align-cli"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "bio",
  "clap",
@@ -785,9 +785,7 @@ checksum = "dc31bd9b61a32c31f9650d18add92aa83a49ba979c143eefd27fe7177b05bd5f"
 
 [[package]]
 name = "rustyms"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df0c1f69859feb11eebf2f0ffe5007987c6afaf96445f09c16b9003b4010ae0f"
+version = "0.3.1"
 dependencies = [
  "itertools",
  "regex",
@@ -963,9 +961,9 @@ checksum = "22049a19f4a68748a168c0fc439f9516686aa045927ff767eca0a85101fb6e73"
 
 [[package]]
 name = "uom"
-version = "0.34.0"
+version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8f50eddd69f656ee545f7663ea5fefb7c789bc1a0d11124e049715f563a16a4"
+checksum = "8362194c7a9845a7a7f3562173d6e1da3f24f7132018cb78fe77a5b4474187b2"
 dependencies = [
  "num-traits",
  "typenum",
