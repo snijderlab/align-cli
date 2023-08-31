@@ -17,7 +17,7 @@ struct Args {
 
     /// Second sequence
     #[arg()]
-    y: String,
+    y: Option<String>,
 
     /// Use global alignment, default
     #[arg(short, long)]
@@ -42,44 +42,53 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    if args.global as u8 + args.semi_global as u8 + args.local as u8 > 1 {
-        panic!("Cannot have multiple alignment types at the same time")
-    }
-    if args.mass {
-        let a = Peptide::pro_forma(&args.x);
-        let b = Peptide::pro_forma(&args.y);
-        if let (Ok(a), Ok(b)) = (&a, &b) {
-            let ty = if args.local {
-                rustyms::align::Type::Local
-            } else if args.semi_global {
-                rustyms::align::Type::GlobalForB
-            } else {
-                rustyms::align::Type::Global
-            };
-            let alignment =
-                rustyms::align::align(a.clone(), b.clone(), rustyms::align::BLOSUM62, ty);
-            show_mass_alignment(&alignment, args.line_width);
-        } else {
-            println!("{}", "Error".red());
-            if a.is_err() {
-                println!(
-                    "Sequence A is not a valid Pro Forma sequence\nMessage: {}\n",
-                    a.err().unwrap()
-                )
-            }
-            if b.is_err() {
-                println!(
-                    "Sequence B is not a valid Pro Forma sequence\nMessage: {}\n",
-                    b.err().unwrap()
-                )
-            }
+    if let Some(y) = &args.y {
+        if args.global as u8 + args.semi_global as u8 + args.local as u8 > 1 {
+            panic!("Cannot have multiple alignment types at the same time")
         }
-    } else if args.x.contains(',') {
-        for (x, y) in args.x.split(',').zip(args.y.split(',')) {
-            align(&args, x.as_bytes(), y.as_bytes());
+        if args.mass {
+            let a = Peptide::pro_forma(&args.x);
+            let b = Peptide::pro_forma(y);
+            if let (Ok(a), Ok(b)) = (&a, &b) {
+                let ty = if args.local {
+                    rustyms::align::Type::Local
+                } else if args.semi_global {
+                    rustyms::align::Type::GlobalForB
+                } else {
+                    rustyms::align::Type::Global
+                };
+                let alignment =
+                    rustyms::align::align(a.clone(), b.clone(), rustyms::align::BLOSUM62, ty);
+                show_mass_alignment(&alignment, args.line_width);
+            } else {
+                println!("{}", "Error".red());
+                if a.is_err() {
+                    println!(
+                        "Sequence A is not a valid Pro Forma sequence\nMessage: {}\n",
+                        a.err().unwrap()
+                    )
+                }
+                if b.is_err() {
+                    println!(
+                        "Sequence B is not a valid Pro Forma sequence\nMessage: {}\n",
+                        b.err().unwrap()
+                    )
+                }
+            }
+        } else if args.x.contains(',') {
+            for (x, y) in args.x.split(',').zip(y.split(',')) {
+                align(&args, x.as_bytes(), y.as_bytes());
+            }
+        } else {
+            align(&args, args.x.as_bytes(), y.as_bytes());
         }
     } else {
-        align(&args, args.x.as_bytes(), args.y.as_bytes());
+        single_stats(
+            &args,
+            Peptide::pro_forma(&args.x).unwrap_or_else(|e| {
+                panic!("Sequence is not a valid Pro Forma sequence\nMessage: {e}\n")
+            }),
+        )
     }
 }
 
@@ -111,4 +120,13 @@ pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -
         }]
     };
     Scoring::new(gap_open, gap_extend, match_fn)
+}
+
+fn single_stats(_args: &Args, seq: Peptide) {
+    println!(
+        "Mass: {}",
+        seq.formula()
+            .and_then(|f| f.monoisotopic_mass().map(|m| format!("{:.2} Da", m.value)))
+            .unwrap_or("Undefined".to_string())
+    );
 }

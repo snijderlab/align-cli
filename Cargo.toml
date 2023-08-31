@@ -1,6 +1,6 @@
 [package]
 name = "align-cli"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 authors = ["Douwe Schulte <d.schulte@uu.nl>"]
 description = "A command line interface for easily aligning two sequences."
@@ -17,4 +17,4 @@ path = "src/main.rs"
 bio = "1.2"
 clap = { version = "4", features = ["derive"] }
 colored = "2"
-rustyms = { path = "../rustyms" }
+rustyms = "0.4.1"
