@@ -17,4 +17,4 @@ path = "src/main.rs"
 bio = "1.2"
 clap = { version = "4", features = ["derive"] }
 colored = "2"
-rustyms = "0.4.1"
+rustyms = { path = "../rustyms" }
