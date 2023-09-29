@@ -101,9 +101,9 @@ fn main() {
         let mut alignments: Vec<_> = sequences
             .into_iter()
             .map(|seq| {
-                let a = ComplexPeptide::pro_forma(&args.x);
-                let b = seq.sequence.clone();
-                if let Ok(a) = &a {
+                let a = seq.sequence.clone();
+                let b = ComplexPeptide::pro_forma(&args.x);
+                if let Ok(b) = &b {
                     let ty = if args.local {
                         rustyms::align::Type::Local
                     } else if args.semi_global {
@@ -114,32 +114,34 @@ fn main() {
                     (
                         seq,
                         rustyms::align::align(
-                            a.clone().assume_linear(),
-                            b,
+                            a,
+                            b.clone().assume_linear(),
                             rustyms::align::BLOSUM62,
                             ty,
                         ),
                     )
                 } else {
                     println!("{}", "Error".red());
-                    if a.is_err() {
+                    if b.is_err() {
                         println!(
                             "Sequence A is not a valid Pro Forma sequence\nMessage: {}\n",
-                            a.err().unwrap()
+                            b.err().unwrap()
                         )
                     }
                     panic!()
                 }
             })
             .collect();
-        alignments.sort_unstable_by_key(|a| -a.1.score);
+        alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
         let best = alignments[0].1.clone();
         let selected: Vec<_> = alignments.into_iter().take(10).collect();
         let mut data = vec![(
             "Rank".to_string(),
             "Database id".to_string(),
             "Score".to_string(),
+            "Normalised score".to_string(),
             "Identity".to_string(),
+            "Similarity".to_string(),
             "Gap".to_string(),
         )];
         for (rank, (fasta, alignment)) in selected.into_iter().enumerate() {
@@ -147,52 +149,65 @@ fn main() {
             data.push((
                 (rank + 1).to_string(),
                 fasta.id,
-                alignment.score.to_string(),
-                format!("{:.2}%", stats.0 as f64 / stats.2 as f64 * 100.0),
-                format!("{:.2}%", stats.1 as f64 / stats.2 as f64 * 100.0),
+                alignment.absolute_score.to_string(),
+                format!("{:.3}", alignment.normalised_score),
+                format!("{:.2}%", stats.0 as f64 / stats.3 as f64 * 100.0),
+                format!("{:.2}%", stats.1 as f64 / stats.3 as f64 * 100.0),
+                format!("{:.2}%", stats.2 as f64 / stats.3 as f64 * 100.0),
             ));
         }
-        let sizes = data
-            .iter()
-            .fold((0, 0, 0, 0, 0), |(aa, ab, ac, ad, ae), (a, b, c, d, e)| {
+        let sizes = data.iter().fold(
+            (0, 0, 0, 0, 0, 0, 0),
+            |(aa, ab, ac, ad, ae, af, ag), (a, b, c, d, e, f, g)| {
                 (
                     aa.max(a.len()),
                     ab.max(b.len()),
                     ac.max(c.len()),
                     ad.max(d.len()),
                     ae.max(e.len()),
+                    af.max(f.len()),
+                    ag.max(g.len()),
                 )
-            });
+            },
+        );
         println!(
-            "┌{}┬{}┬{}┬{}┬{}┐",
+            "┌{}┬{}┬{}┬{}┬{}┬{}┬{}┐",
             "─".repeat(sizes.0),
             "─".repeat(sizes.1),
             "─".repeat(sizes.2),
             "─".repeat(sizes.3),
-            "─".repeat(sizes.4)
+            "─".repeat(sizes.4),
+            "─".repeat(sizes.5),
+            "─".repeat(sizes.6),
         );
-        for (a, b, c, d, e) in data {
+        for (a, b, c, d, e, f, g) in data {
             println!(
-                "│{:w0$}│{:w1$}│{:w2$}│{:w3$}│{:w4$}│",
+                "│{:w0$}│{:w1$}│{:w2$}│{:w3$}│{:w4$}│{:w5$}│{:w6$}│",
                 a,
                 b,
                 c,
                 d,
                 e,
+                f,
+                g,
                 w0 = sizes.0,
                 w1 = sizes.1,
                 w2 = sizes.2,
                 w3 = sizes.3,
-                w4 = sizes.4
+                w4 = sizes.4,
+                w5 = sizes.5,
+                w6 = sizes.6,
             );
         }
         println!(
-            "└{}┴{}┴{}┴{}┴{}┘",
+            "└{}┴{}┴{}┴{}┴{}┴{}┴{}┘",
             "─".repeat(sizes.0),
             "─".repeat(sizes.1),
             "─".repeat(sizes.2),
             "─".repeat(sizes.3),
-            "─".repeat(sizes.4)
+            "─".repeat(sizes.4),
+            "─".repeat(sizes.5),
+            "─".repeat(sizes.6),
         );
         println!("Alignment for the best match: ");
         show_mass_alignment(&best, args.line_width);

@@ -121,15 +121,18 @@ pub fn show_alignment(
 }
 
 pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: usize) {
-    let (identical, gap, length) = alignment.stats();
+    let (identical, similar, gap, length) = alignment.stats();
 
     println!(
-        "Identity: {} {}, Gaps: {} {}, Score: {}, Mass difference: {} Da (ppm) {} \nPath: {}\n",
-        format!("{:.3}", identical as f64 / length as f64).blue(),
+        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da (ppm) {} \nPath: {}\n",
+        format!("{:.3}", identical as f64 / length as f64).bright_blue(),
         format!("({}/{})", identical, length).dimmed(),
+        format!("{:.3}", similar as f64 / length as f64).blue(),
+        format!("({}/{})", similar, length).dimmed(),
         format!("{:.3}", gap as f64 / length as f64).cyan(),
         format!("({}/{})", gap, length).dimmed(),
-        format!("{}", alignment.score).green(),
+        format!("{}", alignment.absolute_score).green(),
+        format!("{:.3}", alignment.normalised_score).green(),
         alignment
             .mass_difference()
             .map_or("??".to_string(), |m| format!("{:.2}", m.value))
