@@ -1,7 +1,8 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
 use colored::Colorize;
-use rustyms::ComplexPeptide;
+use rustyms::{find_isobaric_sets, ComplexPeptide, LinearPeptide};
+use std::io::Write;
 
 mod render;
 mod stats;
@@ -97,11 +98,11 @@ fn main() {
         if !args.mass {
             panic!("Can only do the peptide to database matching based on mass")
         }
-        let sequences = rustyms::identifications::FastaData::parse_reads(&path).unwrap();
+        let sequences = rustyms::identifications::FastaData::parse_file(&path).unwrap();
         let mut alignments: Vec<_> = sequences
             .into_iter()
             .map(|seq| {
-                let a = seq.sequence.clone();
+                let a = seq.peptide.clone();
                 let b = ComplexPeptide::pro_forma(&args.x);
                 if let Ok(b) = &b {
                     let ty = if args.local {
@@ -214,9 +215,11 @@ fn main() {
     } else {
         single_stats(
             &args,
-            ComplexPeptide::pro_forma(&args.x).unwrap_or_else(|e| {
-                panic!("Sequence is not a valid Pro Forma sequence\nMessage: {e}\n")
-            }),
+            ComplexPeptide::pro_forma(&args.x)
+                .unwrap_or_else(|e| {
+                    panic!("Sequence is not a valid Pro Forma sequence\nMessage: {e}\n")
+                })
+                .assume_linear(),
         )
     }
 }
@@ -251,12 +254,23 @@ pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -
     Scoring::new(gap_open, gap_extend, match_fn)
 }
 
-fn single_stats(_args: &Args, seq: ComplexPeptide) {
-    println!(
-        "Mass: {}",
-        seq.assume_linear()
-            .formula()
-            .and_then(|f| f.monoisotopic_mass().map(|m| format!("{:.2} Da", m.value)))
-            .unwrap_or("Undefined".to_string())
-    );
+fn single_stats(_args: &Args, seq: LinearPeptide) {
+    if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
+        let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
+        println!("Mass: {:.2} Da", complete.value);
+        println!(
+            "Mass: {:.2} Da (no N/C terminal taken into account)",
+            bare.value
+        );
+        const MAX: usize = 25;
+        const PPM: f64 = 10.0;
+        print!("Isobaric options ({MAX} max, {PPM:.1} ppm): ");
+        let _ = std::io::stdout().flush();
+        for set in find_isobaric_sets(bare, PPM, &[]).take(MAX) {
+            print!("{}, ", set);
+            let _ = std::io::stdout().flush();
+        }
+    } else {
+        println!("The sequence has no defined mass");
+    }
 }
