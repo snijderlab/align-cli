@@ -1,7 +1,7 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
 use colored::Colorize;
-use rustyms::{find_isobaric_sets, ComplexPeptide, LinearPeptide};
+use rustyms::{find_isobaric_sets, ComplexPeptide, LinearPeptide, MassTolerance};
 use std::io::Write;
 
 mod render;
@@ -43,6 +43,18 @@ struct Args {
     /// The number of characters to show on a single line in the alignment
     #[arg(short = 'n', long, default_value_t = 50)]
     line_width: usize,
+
+    /// The maximal number of isobaric sets the generate, set to 0 to remove the limit
+    #[arg(short, long, default_value_t = 25)]
+    options: usize,
+
+    /// The search tolerance for the isobaric set search
+    #[arg(short, long, default_value_t = MassTolerance::Ppm(10.0), value_parser=mass_tolerance_parse)]
+    tolerance: MassTolerance,
+}
+
+fn mass_tolerance_parse(input: &str) -> Result<MassTolerance, &'static str> {
+    input.parse().map_err(|()| "Invalid tolerance parameter")
 }
 
 fn main() {
@@ -254,7 +266,7 @@ pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -
     Scoring::new(gap_open, gap_extend, match_fn)
 }
 
-fn single_stats(_args: &Args, seq: LinearPeptide) {
+fn single_stats(args: &Args, seq: LinearPeptide) {
     if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
         let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
         println!("Mass: {:.2} Da", complete.value);
@@ -262,13 +274,23 @@ fn single_stats(_args: &Args, seq: LinearPeptide) {
             "Mass: {:.2} Da (no N/C terminal taken into account)",
             bare.value
         );
-        const MAX: usize = 25;
-        const PPM: f64 = 10.0;
-        print!("Isobaric options ({MAX} max, {PPM:.1} ppm): ");
-        let _ = std::io::stdout().flush();
-        for set in find_isobaric_sets(bare, PPM, &[]).take(MAX) {
-            print!("{}, ", set);
+        if args.options == 0 {
+            print!("Isobaric options (all shown, {}): ", args.tolerance);
             let _ = std::io::stdout().flush();
+            for set in find_isobaric_sets(bare, args.tolerance, &[]) {
+                print!("{}, ", set);
+                let _ = std::io::stdout().flush();
+            }
+        } else {
+            print!(
+                "Isobaric options ({} max, {}): ",
+                args.options, args.tolerance
+            );
+            let _ = std::io::stdout().flush();
+            for set in find_isobaric_sets(bare, args.tolerance, &[]).take(args.options) {
+                print!("{}, ", set);
+                let _ = std::io::stdout().flush();
+            }
         }
     } else {
         println!("The sequence has no defined mass");
