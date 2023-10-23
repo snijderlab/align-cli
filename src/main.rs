@@ -81,6 +81,7 @@ fn main() {
                     a.clone().assume_linear(),
                     b.clone().assume_linear(),
                     rustyms::align::BLOSUM62,
+                    MassTolerance::Absolute(rustyms::Mass::new::<rustyms::dalton>(0.1)),
                     ty,
                 );
                 show_mass_alignment(&alignment, args.line_width);
@@ -130,6 +131,7 @@ fn main() {
                             a,
                             b.clone().assume_linear(),
                             rustyms::align::BLOSUM62,
+                            MassTolerance::Absolute(rustyms::Mass::new::<rustyms::dalton>(0.1)),
                             ty,
                         ),
                     )
