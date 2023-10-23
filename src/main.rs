@@ -1,11 +1,11 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
-use colored::{Colorize, CustomColor};
+use colored::Colorize;
 use rustyms::{
     find_isobaric_sets, ComplexPeptide, CustomError, LinearPeptide, MassTolerance, Modification,
     ReturnModification,
 };
-use std::{fmt::Display, io::Write};
+use std::{fmt::Display, io::Write, process::exit};
 
 mod render;
 mod stats;
@@ -39,9 +39,9 @@ struct Args {
     #[arg(short, long)]
     local: bool,
 
-    /// Use mass alignment, interpreting the sequences as ProForma
-    #[arg(short, long)]
-    mass: bool,
+    /// Use normal alignment (instead of the default of Mass alignment)
+    #[arg(long)]
+    normal: bool,
 
     /// The number of characters to show on a single line in the alignment
     #[arg(short = 'n', long, default_value_t = 50)]
@@ -52,7 +52,7 @@ struct Args {
     isobaric: IsobaricNumber,
 
     /// All possible modifications that will be used in the isobaric sets generation, separated by commas `,`
-    #[arg(short = 'x', long, default_value_t = Modifications::None, value_parser=modifications_parse)]
+    #[arg(short, long, default_value_t = Modifications::None, value_parser=modifications_parse)]
     modifications: Modifications,
 
     /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, eg `10.0ppm` or `2.3da`
@@ -143,40 +143,24 @@ fn main() {
         panic!("Cannot have multiple secondary sequence sources (y + file) at the same time")
     }
     if let Some(y) = &args.y {
-        if args.mass {
-            let a = ComplexPeptide::pro_forma(&args.x);
-            let b = ComplexPeptide::pro_forma(y);
-            if let (Ok(a), Ok(b)) = (&a, &b) {
-                let ty = if args.local {
-                    rustyms::align::Type::Local
-                } else if args.semi_global {
-                    rustyms::align::Type::GlobalForB
-                } else {
-                    rustyms::align::Type::Global
-                };
-                let alignment = rustyms::align::align(
-                    a.clone().assume_linear(),
-                    b.clone().assume_linear(),
-                    rustyms::align::BLOSUM62,
-                    args.tolerance,
-                    ty,
-                );
-                show_mass_alignment(&alignment, args.line_width, args.tolerance);
+        if !args.normal {
+            let a = parse_peptide(&args.x);
+            let b = parse_peptide(y);
+            let ty = if args.local {
+                rustyms::align::Type::Local
+            } else if args.semi_global {
+                rustyms::align::Type::GlobalForB
             } else {
-                println!("{}", "Error".red());
-                if a.is_err() {
-                    println!(
-                        "Sequence A is not a valid Pro Forma sequence\nMessage: {}\n",
-                        a.err().unwrap()
-                    )
-                }
-                if b.is_err() {
-                    println!(
-                        "Sequence B is not a valid Pro Forma sequence\nMessage: {}\n",
-                        b.err().unwrap()
-                    )
-                }
-            }
+                rustyms::align::Type::Global
+            };
+            let alignment = rustyms::align::align(
+                a.clone().assume_linear(),
+                b.clone().assume_linear(),
+                rustyms::align::BLOSUM62,
+                args.tolerance,
+                ty,
+            );
+            show_mass_alignment(&alignment, args.line_width, args.tolerance);
         } else if args.x.contains(',') {
             for (x, y) in args.x.split(',').zip(y.split(',')) {
                 align(&args, x.as_bytes(), y.as_bytes());
@@ -185,43 +169,32 @@ fn main() {
             align(&args, args.x.as_bytes(), y.as_bytes());
         }
     } else if let Some(path) = args.file {
-        if !args.mass {
+        if args.normal {
             panic!("Can only do the peptide to database matching based on mass")
         }
         let sequences = rustyms::identifications::FastaData::parse_file(&path).unwrap();
+        let search_sequence = parse_peptide(&args.x);
+        let ty = if args.local {
+            rustyms::align::Type::Local
+        } else if args.semi_global {
+            rustyms::align::Type::GlobalForB
+        } else {
+            rustyms::align::Type::Global
+        };
         let mut alignments: Vec<_> = sequences
             .into_iter()
             .map(|seq| {
                 let a = seq.peptide.clone();
-                let b = ComplexPeptide::pro_forma(&args.x);
-                if let Ok(b) = &b {
-                    let ty = if args.local {
-                        rustyms::align::Type::Local
-                    } else if args.semi_global {
-                        rustyms::align::Type::GlobalForB
-                    } else {
-                        rustyms::align::Type::Global
-                    };
-                    (
-                        seq,
-                        rustyms::align::align(
-                            a,
-                            b.clone().assume_linear(),
-                            rustyms::align::BLOSUM62,
-                            args.tolerance,
-                            ty,
-                        ),
-                    )
-                } else {
-                    println!("{}", "Error".red());
-                    if b.is_err() {
-                        println!(
-                            "Sequence A is not a valid Pro Forma sequence\nMessage: {}\n",
-                            b.err().unwrap()
-                        )
-                    }
-                    panic!()
-                }
+                (
+                    seq,
+                    rustyms::align::align(
+                        a,
+                        search_sequence.clone().assume_linear(),
+                        rustyms::align::BLOSUM62,
+                        args.tolerance,
+                        ty,
+                    ),
+                )
             })
             .collect();
         alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
@@ -312,6 +285,17 @@ fn main() {
                 })
                 .assume_linear(),
         )
+    }
+}
+
+/// Parses the peptide or shows an error and exits
+fn parse_peptide(input: &str) -> ComplexPeptide {
+    match ComplexPeptide::pro_forma(input) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("{}", e);
+            exit(1);
+        }
     }
 }
 
