@@ -1,6 +1,6 @@
 use bio::alignment::{Alignment, AlignmentOperation};
 use colored::Colorize;
-use rustyms::align::MatchType;
+use rustyms::{align::MatchType, MassTolerance};
 use std::fmt::Write;
 
 use crate::stats::*;
@@ -120,11 +120,15 @@ pub fn show_alignment(
     println!("{}", lines.2);
 }
 
-pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: usize) {
+pub fn show_mass_alignment(
+    alignment: &rustyms::align::Alignment,
+    line_width: usize,
+    tolerance: MassTolerance,
+) {
     let (identical, similar, gap, length) = alignment.stats();
 
     println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da (ppm) {} \nPath: {}\n",
+        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nPath: {}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
         format!("({}/{})", identical, length).dimmed(),
         format!("{:.3}", similar as f64 / length as f64).blue(),
@@ -141,6 +145,7 @@ pub fn show_mass_alignment(alignment: &rustyms::align::Alignment, line_width: us
             .ppm()
             .map_or("??".to_string(), |m| format!("{:.2}", m))
             .yellow(),
+        format!("Tolerance: {}", tolerance).dimmed(),
         alignment.short(),
     );
 

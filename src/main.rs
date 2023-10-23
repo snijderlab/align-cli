@@ -1,8 +1,11 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
-use colored::Colorize;
-use rustyms::{find_isobaric_sets, ComplexPeptide, LinearPeptide, MassTolerance};
-use std::io::Write;
+use colored::{Colorize, CustomColor};
+use rustyms::{
+    find_isobaric_sets, ComplexPeptide, CustomError, LinearPeptide, MassTolerance, Modification,
+    ReturnModification,
+};
+use std::{fmt::Display, io::Write};
 
 mod render;
 mod stats;
@@ -44,17 +47,91 @@ struct Args {
     #[arg(short = 'n', long, default_value_t = 50)]
     line_width: usize,
 
-    /// The maximal number of isobaric sets the generate, set to 0 to remove the limit
-    #[arg(short, long, default_value_t = 25)]
-    options: usize,
+    /// The maximal number of isobaric sets the generate, use `all` to generate all options
+    #[arg(short, long, default_value_t = IsobaricNumber::Limited(25), value_parser=options_parse)]
+    isobaric: IsobaricNumber,
 
-    /// The search tolerance for the isobaric set search
+    /// All possible modifications that will be used in the isobaric sets generation, separated by commas `,`
+    #[arg(short = 'x', long, default_value_t = Modifications::None, value_parser=modifications_parse)]
+    modifications: Modifications,
+
+    /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, eg `10.0ppm` or `2.3da`
     #[arg(short, long, default_value_t = MassTolerance::Ppm(10.0), value_parser=mass_tolerance_parse)]
     tolerance: MassTolerance,
 }
 
+#[derive(Debug, Clone)]
+enum IsobaricNumber {
+    All,
+    Limited(usize),
+}
+impl Display for IsobaricNumber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "all"),
+            Self::Limited(limit) => write!(f, "{limit}"),
+        }
+    }
+}
 fn mass_tolerance_parse(input: &str) -> Result<MassTolerance, &'static str> {
     input.parse().map_err(|()| "Invalid tolerance parameter")
+}
+fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
+    if input.to_lowercase() == "all" {
+        Ok(IsobaricNumber::All)
+    } else {
+        input
+            .parse::<usize>()
+            .map(IsobaricNumber::Limited)
+            .map_err(|_| "Invalid options parameter")
+    }
+}
+#[derive(Debug, Clone)]
+enum Modifications {
+    None,
+    Some(Vec<Modification>),
+}
+impl Modifications {
+    fn mods(&self) -> &[Modification] {
+        match self {
+            Self::None => &[],
+            Self::Some(m) => m,
+        }
+    }
+}
+impl Display for Modifications {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, ""),
+            Self::Some(mods) => {
+                let mut start = true;
+                for m in mods {
+                    write!(f, "{}{}", if start { "" } else { "," }, m).unwrap();
+                    start = false;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+fn modifications_parse(input: &str) -> Result<Modifications, &'static str> {
+    input
+        .trim_end_matches(',')
+        .split(',')
+        .map(|m| {
+            Modification::try_from(m, 0..m.len(), &mut Vec::new()).map(|m| match m {
+                ReturnModification::Defined(d) => d,
+                _ => {
+                    panic!("Can not define ambiguous modifications for the modifications parameter")
+                }
+            })
+        })
+        .collect::<Result<Vec<Modification>, CustomError>>()
+        .map(Modifications::Some)
+        .map_err(|e| {
+            print!("{e}");
+            "Failed to parse modification"
+        })
 }
 
 fn main() {
@@ -81,10 +158,10 @@ fn main() {
                     a.clone().assume_linear(),
                     b.clone().assume_linear(),
                     rustyms::align::BLOSUM62,
-                    MassTolerance::Absolute(rustyms::Mass::new::<rustyms::dalton>(0.1)),
+                    args.tolerance,
                     ty,
                 );
-                show_mass_alignment(&alignment, args.line_width);
+                show_mass_alignment(&alignment, args.line_width, args.tolerance);
             } else {
                 println!("{}", "Error".red());
                 if a.is_err() {
@@ -131,7 +208,7 @@ fn main() {
                             a,
                             b.clone().assume_linear(),
                             rustyms::align::BLOSUM62,
-                            MassTolerance::Absolute(rustyms::Mass::new::<rustyms::dalton>(0.1)),
+                            args.tolerance,
                             ty,
                         ),
                     )
@@ -225,7 +302,7 @@ fn main() {
             "─".repeat(sizes.6),
         );
         println!("Alignment for the best match: ");
-        show_mass_alignment(&best, args.line_width);
+        show_mass_alignment(&best, args.line_width, args.tolerance);
     } else {
         single_stats(
             &args,
@@ -271,27 +348,46 @@ pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -
 fn single_stats(args: &Args, seq: LinearPeptide) {
     if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
         let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
-        println!("Mass: {:.2} Da", complete.value);
         println!(
-            "Mass: {:.2} Da (no N/C terminal taken into account)",
-            bare.value
+            "Full Mass: {} Da",
+            format!("{:.2}", complete.value).yellow()
         );
-        if args.options == 0 {
-            print!("Isobaric options (all shown, {}): ", args.tolerance);
-            let _ = std::io::stdout().flush();
-            for set in find_isobaric_sets(bare, args.tolerance, &[]) {
-                print!("{}, ", set);
-                let _ = std::io::stdout().flush();
-            }
-        } else {
-            print!(
-                "Isobaric options ({} max, {}): ",
-                args.options, args.tolerance
-            );
-            let _ = std::io::stdout().flush();
-            for set in find_isobaric_sets(bare, args.tolerance, &[]).take(args.options) {
-                print!("{}, ", set);
-                let _ = std::io::stdout().flush();
+        println!(
+            "Bare Mass: {} Da {}",
+            format!("{:.2}", bare.value).yellow(),
+            "(no N/C terminal taken into account)".dimmed(),
+        );
+        println!(
+            "Composition: {} {}",
+            format!("{}", seq.bare_formula().unwrap()).green(),
+            "(no N/C terminal taken into account)".dimmed(),
+        );
+        if !matches!(args.isobaric, IsobaricNumber::Limited(0)) {
+            match args.isobaric {
+                IsobaricNumber::All => {
+                    println!(
+                        "Isobaric options {}: ",
+                        format!("(all, {})", args.tolerance).dimmed()
+                    );
+                    let _ = std::io::stdout().flush();
+                    for set in find_isobaric_sets(bare, args.tolerance, args.modifications.mods()) {
+                        print!("{}, ", format!("{set}").blue());
+                        let _ = std::io::stdout().flush();
+                    }
+                }
+                IsobaricNumber::Limited(limit) => {
+                    println!(
+                        "Isobaric options {}: ",
+                        format!("(limited to {}, {})", limit, args.tolerance).dimmed()
+                    );
+                    let _ = std::io::stdout().flush();
+                    for set in find_isobaric_sets(bare, args.tolerance, args.modifications.mods())
+                        .take(limit)
+                    {
+                        print!("{}, ", format!("{set}").blue());
+                        let _ = std::io::stdout().flush();
+                    }
+                }
             }
         }
     } else {
