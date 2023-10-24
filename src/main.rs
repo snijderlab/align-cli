@@ -115,23 +115,27 @@ impl Display for Modifications {
     }
 }
 fn modifications_parse(input: &str) -> Result<Modifications, &'static str> {
-    input
-        .trim_end_matches(',')
-        .split(',')
-        .map(|m| {
-            Modification::try_from(m, 0..m.len(), &mut Vec::new()).map(|m| match m {
+    if input.is_empty() {
+        Ok(Modifications::None)
+    } else {
+        input
+            .trim_end_matches(',')
+            .split(',')
+            .map(|m| {
+                Modification::try_from(m, 0..m.len(), &mut Vec::new()).map(|m| match m {
                 ReturnModification::Defined(d) => d,
                 _ => {
                     panic!("Can not define ambiguous modifications for the modifications parameter")
                 }
             })
-        })
-        .collect::<Result<Vec<Modification>, CustomError>>()
-        .map(Modifications::Some)
-        .map_err(|e| {
-            print!("{e}");
-            "Failed to parse modification"
-        })
+            })
+            .collect::<Result<Vec<Modification>, CustomError>>()
+            .map(Modifications::Some)
+            .map_err(|e| {
+                print!("{e}");
+                "Failed to parse modification"
+            })
+    }
 }
 
 fn main() {
@@ -333,17 +337,22 @@ fn single_stats(args: &Args, seq: LinearPeptide) {
     if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
         let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
         println!(
-            "Full Mass: {} Da",
-            format!("{:.2}", complete.value).yellow()
+            "Full mass: {} Da (average weight: {} Da)",
+            format!("{:.2}", complete.value).yellow(),
+            format!(
+                "{:.2}",
+                seq.formula().unwrap().average_weight().unwrap().value
+            )
+            .yellow(),
         );
         println!(
-            "Bare Mass: {} Da {}",
+            "Bare mass: {} Da {}",
             format!("{:.2}", bare.value).yellow(),
             "(no N/C terminal taken into account)".dimmed(),
         );
         println!(
             "Composition: {} {}",
-            format!("{}", seq.bare_formula().unwrap()).green(),
+            seq.bare_formula().unwrap().hill_notation_fancy().green(),
             "(no N/C terminal taken into account)".dimmed(),
         );
         if !matches!(args.isobaric, IsobaricNumber::Limited(0)) {
@@ -351,7 +360,7 @@ fn single_stats(args: &Args, seq: LinearPeptide) {
                 IsobaricNumber::All => {
                     println!(
                         "Isobaric options {}: ",
-                        format!("(all, {})", args.tolerance).dimmed()
+                        format!("(all, tolerance {})", args.tolerance).dimmed()
                     );
                     let _ = std::io::stdout().flush();
                     for set in find_isobaric_sets(bare, args.tolerance, args.modifications.mods()) {
@@ -361,8 +370,8 @@ fn single_stats(args: &Args, seq: LinearPeptide) {
                 }
                 IsobaricNumber::Limited(limit) => {
                     println!(
-                        "Isobaric options {}: ",
-                        format!("(limited to {}, {})", limit, args.tolerance).dimmed()
+                        "Isobaric options: {}",
+                        format!("(limited to {}, tolerance {})", limit, args.tolerance).dimmed()
                     );
                     let _ = std::io::stdout().flush();
                     for set in find_isobaric_sets(bare, args.tolerance, args.modifications.mods())
