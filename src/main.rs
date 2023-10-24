@@ -337,13 +337,19 @@ fn single_stats(args: &Args, seq: LinearPeptide) {
     if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
         let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
         println!(
-            "Full mass: {} Da (average weight: {} Da)",
+            "Full mass: {} Da | {} Da | {} Da {}",
             format!("{:.2}", complete.value).yellow(),
             format!(
                 "{:.2}",
                 seq.formula().unwrap().average_weight().unwrap().value
             )
             .yellow(),
+            format!(
+                "{:.2}",
+                seq.formula().unwrap().most_abundant_mass().unwrap().value
+            )
+            .yellow(),
+            "(monoisotopic | average | most abundant)".dimmed(),
         );
         println!(
             "Bare mass: {} Da {}",
