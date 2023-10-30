@@ -1,5 +1,5 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
-use clap::Parser;
+use clap::{Args, Parser};
 use colored::Colorize;
 use rustyms::{
     error::CustomError,
@@ -17,8 +17,17 @@ mod stats;
 use render::*;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about)]
-struct Args {
+#[command(author, version, about)]
+#[command(long_about = "It supports four distinct use cases:
+
+1) Align two sequences `align <X> <Y>`, this shows the best alignment for these two sequences.
+
+2) Align a single peptide to a database `align <X> --file <FILE.fasta>`, this shows the scores for the best matches for this peptide alongside the alignment for the best match.
+
+3) Get information about a single sequence `align <sequence>`, this shows many basic properties (like mass) and generates isobaric sequences to this sequence.
+
+4) Get information about a single modification, `align --modification <MODIFICATION>`, this shows basic properties, and if it is a mass shift, eg `+58.01`, it shows all modifications that have the same mass within the tolerance.")]
+struct Cli {
     /// First sequence
     #[arg()]
     x: Option<String>,
@@ -27,23 +36,15 @@ struct Args {
     #[arg()]
     y: Option<String>,
 
-    /// A fasta database file to open to align the sequence to
+    /// A fasta database file to open to align the sequence to, only provide a single sequence for this mode
     #[arg(short, long)]
     file: Option<String>,
 
-    /// Use global alignment, default
-    #[arg(short, long)]
-    global: bool,
+    #[command(flatten)]
+    alignment_type: AlignmentType,
 
-    /// Use semi-global alignment
-    #[arg(short, long)]
-    semi_global: bool,
-
-    /// Use local alignment
-    #[arg(short, long)]
-    local: bool,
-
-    /// Use normal alignment (instead of the default of Mass alignment)
+    /// Use normal alignment (instead of the default of Mass alignment) this uses Smith Waterman or Needleman Wunsch algorithms (based on the alignment mode)
+    /// using the BLOSUM62 scoring table.
     #[arg(long)]
     normal: bool,
 
@@ -67,9 +68,44 @@ struct Args {
     #[arg(short, long, default_value_t = MassTolerance::Ppm(10.0), value_parser=mass_tolerance_parse)]
     tolerance: MassTolerance,
 
-    /// A modification you want details on
+    /// A modification you want details on, if it is a mass shift modification eg `+58.01` it will show all predefined modifications that are within the tolerance of this mass
     #[arg(short, long, value_parser=modification_parse)]
     modification: Option<Modification>,
+}
+
+#[test]
+fn verify_cli() {
+    use clap::CommandFactory;
+    Cli::command().debug_assert()
+}
+
+#[derive(Args, Debug)]
+#[group(multiple = false)]
+struct AlignmentType {
+    /// Use global alignment [default]
+    #[arg(short, long)]
+    global: bool,
+
+    /// Use semi-global alignment, meaning that the second sequence has to match fully, while the first sequence can be longer then the alignment.
+    /// When the `--file` mode is used this flag indicates that the given sequence can align semi globally to the provided database sequences.
+    #[arg(short, long)]
+    semi_global: bool,
+
+    /// Use local alignment
+    #[arg(short, long)]
+    local: bool,
+}
+
+impl AlignmentType {
+    fn ty(&self) -> rustyms::align::Type {
+        if self.local {
+            rustyms::align::Type::Local
+        } else if self.semi_global {
+            rustyms::align::Type::GlobalForB
+        } else {
+            rustyms::align::Type::Global
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -166,10 +202,7 @@ fn modification_parse(input: &str) -> Result<Modification, String> {
 }
 
 fn main() {
-    let args = Args::parse();
-    if args.global as u8 + args.semi_global as u8 + args.local as u8 > 1 {
-        panic!("Cannot have multiple alignment types at the same time")
-    }
+    let args = Cli::parse();
     if args.y.is_some() as u8 + args.file.is_some() as u8 > 1 {
         panic!("Cannot have multiple secondary sequence sources (y + file) at the same time")
     }
@@ -177,13 +210,7 @@ fn main() {
         if !args.normal {
             let a = parse_peptide(x);
             let b = parse_peptide(y);
-            let ty = if args.local {
-                rustyms::align::Type::Local
-            } else if args.semi_global {
-                rustyms::align::Type::GlobalForB
-            } else {
-                rustyms::align::Type::Global
-            };
+            let ty = args.alignment_type.ty();
             let alignment = rustyms::align::align(
                 a.clone().assume_linear(),
                 b.clone().assume_linear(),
@@ -205,13 +232,7 @@ fn main() {
         }
         let sequences = rustyms::identifications::FastaData::parse_file(path).unwrap();
         let search_sequence = parse_peptide(x);
-        let ty = if args.local {
-            rustyms::align::Type::Local
-        } else if args.semi_global {
-            rustyms::align::Type::GlobalForB
-        } else {
-            rustyms::align::Type::Global
-        };
+        let ty = args.alignment_type.ty();
         let mut alignments: Vec<_> = sequences
             .into_iter()
             .map(|seq| {
@@ -334,17 +355,23 @@ fn parse_peptide(input: &str) -> ComplexPeptide {
     }
 }
 
-fn align(args: &Args, x: &[u8], y: &[u8]) {
+fn align(args: &Cli, x: &[u8], y: &[u8]) {
     let scoring = get_blosum62(-12, -1);
     let mut aligner = Aligner::with_capacity_and_scoring(x.len(), y.len(), scoring);
-    let alignment = if args.local {
+    let alignment = if args.alignment_type.local {
         aligner.local(x, y)
-    } else if args.semi_global {
+    } else if args.alignment_type.semi_global {
         aligner.semiglobal(x, y)
     } else {
         aligner.global(x, y)
     };
-    show_alignment(&alignment, x, y, args.semi_global, args.line_width);
+    show_alignment(
+        &alignment,
+        x,
+        y,
+        args.alignment_type.semi_global,
+        args.line_width,
+    );
 }
 
 pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -> i32> {
@@ -364,7 +391,7 @@ pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -
     Scoring::new(gap_open, gap_extend, match_fn)
 }
 
-fn single_stats(args: &Args, seq: LinearPeptide) {
+fn single_stats(args: &Cli, seq: LinearPeptide) {
     if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
         let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
         println!(
