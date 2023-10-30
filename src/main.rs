@@ -2,8 +2,12 @@ use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
 use colored::Colorize;
 use rustyms::{
-    find_isobaric_sets, ComplexPeptide, CustomError, LinearPeptide, MassTolerance, Modification,
-    ReturnModification,
+    error::CustomError,
+    find_isobaric_sets,
+    modification::{GnoComposition, ReturnModification},
+    ontologies::*,
+    placement_rule::*,
+    AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification,
 };
 use std::{fmt::Display, io::Write, process::exit};
 
@@ -17,7 +21,7 @@ use render::*;
 struct Args {
     /// First sequence
     #[arg()]
-    x: String,
+    x: Option<String>,
 
     /// Second sequence
     #[arg()]
@@ -51,13 +55,21 @@ struct Args {
     #[arg(short, long, default_value_t = IsobaricNumber::Limited(25), value_parser=options_parse)]
     isobaric: IsobaricNumber,
 
-    /// All possible modifications that will be used in the isobaric sets generation, separated by commas `,`
+    /// All possible fixed modifications that will be used in the isobaric sets generation, separated by commas `,`
+    #[arg(short = 'F', long, default_value_t = Modifications::None, value_parser=modifications_parse)]
+    fixed: Modifications,
+
+    /// All possible variable modifications that will be used in the isobaric sets generation, separated by commas `,`
     #[arg(short, long, default_value_t = Modifications::None, value_parser=modifications_parse)]
-    modifications: Modifications,
+    variable: Modifications,
 
     /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, eg `10.0ppm` or `2.3da`
     #[arg(short, long, default_value_t = MassTolerance::Ppm(10.0), value_parser=mass_tolerance_parse)]
     tolerance: MassTolerance,
+
+    /// A modification you want details on
+    #[arg(short, long, value_parser=modification_parse)]
+    modification: Option<Modification>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,6 +150,21 @@ fn modifications_parse(input: &str) -> Result<Modifications, &'static str> {
     }
 }
 
+fn modification_parse(input: &str) -> Result<Modification, String> {
+    if input.is_empty() {
+        Err("Empty".to_string())
+    } else {
+        Modification::try_from(input, 0..input.len(), &mut Vec::new())
+            .map(|m| match m {
+                ReturnModification::Defined(d) => d,
+                _ => {
+                    panic!("Can not define ambiguous modifications for the modifications parameter")
+                }
+            })
+            .map_err(|err| err.to_string())
+    }
+}
+
 fn main() {
     let args = Args::parse();
     if args.global as u8 + args.semi_global as u8 + args.local as u8 > 1 {
@@ -146,9 +173,9 @@ fn main() {
     if args.y.is_some() as u8 + args.file.is_some() as u8 > 1 {
         panic!("Cannot have multiple secondary sequence sources (y + file) at the same time")
     }
-    if let Some(y) = &args.y {
+    if let (Some(x), Some(y)) = (&args.x, &args.y) {
         if !args.normal {
-            let a = parse_peptide(&args.x);
+            let a = parse_peptide(x);
             let b = parse_peptide(y);
             let ty = if args.local {
                 rustyms::align::Type::Local
@@ -165,19 +192,19 @@ fn main() {
                 ty,
             );
             show_mass_alignment(&alignment, args.line_width, args.tolerance);
-        } else if args.x.contains(',') {
-            for (x, y) in args.x.split(',').zip(y.split(',')) {
+        } else if x.contains(',') {
+            for (x, y) in x.split(',').zip(y.split(',')) {
                 align(&args, x.as_bytes(), y.as_bytes());
             }
         } else {
-            align(&args, args.x.as_bytes(), y.as_bytes());
+            align(&args, x.as_bytes(), y.as_bytes());
         }
-    } else if let Some(path) = args.file {
+    } else if let (Some(x), Some(path)) = (&args.x, &args.file) {
         if args.normal {
             panic!("Can only do the peptide to database matching based on mass")
         }
-        let sequences = rustyms::identifications::FastaData::parse_file(&path).unwrap();
-        let search_sequence = parse_peptide(&args.x);
+        let sequences = rustyms::identifications::FastaData::parse_file(path).unwrap();
+        let search_sequence = parse_peptide(x);
         let ty = if args.local {
             rustyms::align::Type::Local
         } else if args.semi_global {
@@ -280,15 +307,19 @@ fn main() {
         );
         println!("Alignment for the best match: ");
         show_mass_alignment(&best, args.line_width, args.tolerance);
-    } else {
+    } else if let Some(x) = &args.x {
         single_stats(
             &args,
-            ComplexPeptide::pro_forma(&args.x)
+            ComplexPeptide::pro_forma(x)
                 .unwrap_or_else(|e| {
                     panic!("Sequence is not a valid Pro Forma sequence\nMessage: {e}\n")
                 })
                 .assume_linear(),
         )
+    } else if let Some(modification) = &args.modification {
+        modification_stats(modification, args.tolerance);
+    } else {
+        println!("Please provide an argument to work with, use --help to see all options.")
     }
 }
 
@@ -337,19 +368,14 @@ fn single_stats(args: &Args, seq: LinearPeptide) {
     if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
         let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
         println!(
-            "Full mass: {} Da | {} Da | {} Da {}",
+            "Full mass: {} Da | {} Da {}",
             format!("{:.2}", complete.value).yellow(),
             format!(
                 "{:.2}",
                 seq.formula().unwrap().average_weight().unwrap().value
             )
             .yellow(),
-            format!(
-                "{:.2}",
-                seq.formula().unwrap().most_abundant_mass().unwrap().value
-            )
-            .yellow(),
-            "(monoisotopic | average | most abundant)".dimmed(),
+            "(monoisotopic | average)".dimmed(),
         );
         println!(
             "Bare mass: {} Da {}",
@@ -369,7 +395,12 @@ fn single_stats(args: &Args, seq: LinearPeptide) {
                         format!("(all, tolerance {})", args.tolerance).dimmed()
                     );
                     let _ = std::io::stdout().flush();
-                    for set in find_isobaric_sets(bare, args.tolerance, args.modifications.mods()) {
+                    for set in find_isobaric_sets(
+                        bare,
+                        args.tolerance,
+                        args.fixed.mods(),
+                        args.variable.mods(),
+                    ) {
                         print!("{}, ", format!("{set}").blue());
                         let _ = std::io::stdout().flush();
                     }
@@ -380,8 +411,13 @@ fn single_stats(args: &Args, seq: LinearPeptide) {
                         format!("(limited to {}, tolerance {})", limit, args.tolerance).dimmed()
                     );
                     let _ = std::io::stdout().flush();
-                    for set in find_isobaric_sets(bare, args.tolerance, args.modifications.mods())
-                        .take(limit)
+                    for set in find_isobaric_sets(
+                        bare,
+                        args.tolerance,
+                        args.fixed.mods(),
+                        args.variable.mods(),
+                    )
+                    .take(limit)
                     {
                         print!("{}, ", format!("{set}").blue());
                         let _ = std::io::stdout().flush();
@@ -391,5 +427,106 @@ fn single_stats(args: &Args, seq: LinearPeptide) {
         }
     } else {
         println!("The sequence has no defined mass");
+    }
+}
+
+fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
+    if let Modification::Mass(mass) = modification {
+        println!(
+            "All ontology modifications close to the given monoisotopic mass: {}",
+            format!("tolerance: {tolerance}").dimmed()
+        );
+        for (_, _, modification) in rustyms::ontologies::unimod_ontology()
+            .iter()
+            .chain(rustyms::ontologies::psimod_ontology())
+            .chain(rustyms::ontologies::gnome_ontology())
+        {
+            if tolerance.within(*mass, modification.formula().monoisotopic_mass().unwrap()) {
+                println!(
+                    "{} {} {}",
+                    modification.to_string().purple(),
+                    format!(
+                        "{:.4}",
+                        modification.formula().monoisotopic_mass().unwrap().value
+                    )
+                    .blue(),
+                    modification.formula().hill_notation_fancy().green(),
+                );
+            }
+        }
+    } else if let Some(monoisotopic) = modification.formula().monoisotopic_mass() {
+        println!(
+            "Full mass: {} Da | {} Da  {}",
+            format!("{:.2}", monoisotopic.value).yellow(),
+            format!(
+                "{:.2}",
+                modification.formula().average_weight().unwrap().value
+            )
+            .yellow(),
+            "(monoisotopic | average)".dimmed(),
+        );
+        println!(
+            "Composition: {}",
+            modification.formula().hill_notation_fancy().green(),
+        );
+        if let Modification::Predefined(_, rules, ontology, name, index) = modification {
+            println!(
+                "Ontology: {}, name: {}, index: {}",
+                ontology.to_string().purple(),
+                name.green(),
+                index.to_string().blue()
+            );
+            print!("Placement rules: ");
+
+            let mut first = true;
+            for rule in rules {
+                match rule {
+                    PlacementRule::AminoAcid(aa, pos) => {
+                        print!(
+                            "{}{}@{}",
+                            if first { "" } else { ", " },
+                            aa.iter().map(AminoAcid::char).collect::<String>().yellow(),
+                            pos.to_string().green()
+                        )
+                    }
+                    PlacementRule::PsiModification(index, pos) => {
+                        print!(
+                            "{}{}@{}",
+                            if first { "" } else { ", " },
+                            psimod_ontology()
+                                .find_id(*index)
+                                .unwrap()
+                                .to_string()
+                                .blue(),
+                            pos.to_string().green()
+                        )
+                    }
+                    PlacementRule::Terminal(pos) => {
+                        print!(
+                            "{}{}",
+                            if first { "" } else { ", " },
+                            pos.to_string().green()
+                        )
+                    }
+                }
+                first = false;
+            }
+        } else if let Modification::Gno(composition, name) = modification {
+            println!(
+                "Ontology: {}, name: {}",
+                "GNOme".to_string().purple(),
+                name.to_uppercase().green(),
+            );
+            match composition {
+                GnoComposition::Mass(_) => {
+                    println!("Only mass known")
+                }
+                GnoComposition::Structure(structure) => {
+                    println!("Structure: {}", structure.to_string().green())
+                }
+            }
+        }
+    } else {
+        println!("{}", "No defined mass".red())
     }
 }
