@@ -57,11 +57,11 @@ struct Cli {
     isobaric: IsobaricNumber,
 
     /// All possible fixed modifications that will be used in the isobaric sets generation, separated by commas `,`
-    #[arg(short = 'F', long, default_value_t = Modifications::None, value_parser=modifications_parse)]
+    #[arg(short = 'F', long, default_value_t = Modifications::None, value_parser=modifications_parse, allow_hyphen_values=true)]
     fixed: Modifications,
 
     /// All possible variable modifications that will be used in the isobaric sets generation, separated by commas `,`
-    #[arg(short, long, default_value_t = Modifications::None, value_parser=modifications_parse)]
+    #[arg(short, long, default_value_t = Modifications::None, value_parser=modifications_parse, allow_hyphen_values=true)]
     variable: Modifications,
 
     /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, eg `10.0ppm` or `2.3da`
@@ -69,7 +69,7 @@ struct Cli {
     tolerance: MassTolerance,
 
     /// A modification you want details on, if it is a mass shift modification eg `+58.01` it will show all predefined modifications that are within the tolerance of this mass
-    #[arg(short, long, value_parser=modification_parse)]
+    #[arg(short, long, value_parser=modification_parse, allow_hyphen_values=true)]
     modification: Option<Modification>,
 }
 

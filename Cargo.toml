@@ -16,5 +16,5 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive", "cargo"] }
 colored = "2"
-rustyms = "0.6.1"
+rustyms = { git = "https://github.com/snijderlab/rustyms" }
 bio = "1.2"
