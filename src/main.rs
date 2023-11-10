@@ -55,18 +55,28 @@ struct Cli {
     #[arg(short, long, default_value_t = IsobaricNumber::Limited(25), value_parser=options_parse)]
     isobaric: IsobaricNumber,
 
-    /// All possible fixed modifications that will be used in the isobaric sets generation, separated by commas `,`.
+    /// All possible fixed modifications that will be used in the isobaric sets generation, separated by commas `,`, commas can be
+    /// escaped by wrapping the entire modification in square brackets `[..]`. 
     /// You can overwrite the default placement rules in the same was as for variable modifications.
     #[arg(short = 'F', long, default_value_t = Modifications::None, value_parser=modifications_parse, allow_hyphen_values=true)]
     fixed: Modifications,
 
-    /// All possible variable modifications that will be used in the isobaric sets generation, separated by commas `,`. 
+    /// All possible variable modifications that will be used in the isobaric sets generation, separated by commas `,`, commas can be
+    /// escaped by wrapping the entire modification in square brackets `[..]`. 
     /// You can overwrite the default placement rules in the following way: `@AA-pos` where `AA` is the list of all amino acids it can be 
     /// placed or a star to indicate it can be placed on all locations, and `pos` is the position: * -> Anywhere, 
     /// N/n -> N terminal (protein/peptide), C/c -> C terminal (protein/peptide). The position can be left out which defaults to Anywhere.
     /// Examples for the rules: `Carboxymethyl@C`, `Oxidation@WFH`, `Amidated@*-C`.
     #[arg(short, long, default_value_t = Modifications::None, value_parser=modifications_parse, allow_hyphen_values=true)]
     variable: Modifications,
+    
+    /// The base to always include in generating isobaric sets. This is assumed to be a simple sequence (for details see rustyms::LinearPeptide::assume_simple).
+    #[arg(long, value_parser=peptide_parser)]
+    include: Option<LinearPeptide>,
+    
+    /// Overrule the default set of amino acids used in the isobaric sequences generation. The default set has all amino acids with a defined mass (no I/L in favour of J, no B/Z/X, but with U/O included).
+    #[arg(long, value_parser=amino_acids_parser)]
+    amino_acids: Option<AminoAcids>,
 
     /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, eg `10.0ppm` or `2.3da`
     #[arg(short, long, default_value_t = MassTolerance::Ppm(10.0), value_parser=mass_tolerance_parse)]
@@ -138,6 +148,13 @@ fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
             .map_err(|_| "Invalid options parameter")
     }
 }
+fn peptide_parser(input: &str) -> Result<LinearPeptide, String> {
+    Ok(ComplexPeptide::pro_forma(input).map_err(|e| e.to_string())?.assume_linear().assume_simple())
+}
+fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
+    input.chars().map(|c| AminoAcid::try_from(c).map_err(|()| format!("`{c}` is not a valid amino acid"))).collect()
+}
+type AminoAcids = Vec<AminoAcid>;
 #[derive(Debug, Clone)]
 enum Modifications {
     None,
@@ -184,13 +201,51 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
             Ok(Some(aa.chars().map(|c| AminoAcid::try_from(c).map_err(|_| format!("'{c}' is not a valid amino acid"))).collect::<Result<Vec<_>,_>>()?))
         }
     }
+    fn split(input: &str) -> Vec<&str> {
+        let input = input.trim_end_matches(',');
+        let mut index = None;
+        let mut depth = 0;
+        let mut res = Vec::new();
+        for (i, c) in input.as_bytes().iter().enumerate() {
+            match c {
+                b'[' => {
+                    if index.is_none() || depth == 0 {
+                        index = Some(i+1);
+                        depth = 1;
+                    } else {
+                        depth += 1;
+                    }
+                } 
+                b']' if index.is_some() && depth > 0 => {
+                    if depth == 1 {
+                        res.push(&input[index.unwrap()..i]);
+                        index = None;
+                        depth = 0;
+                    } else {
+                        depth -= 1;
+                    }
+                } 
+                b',' if depth == 0 => {
+                    if let Some(ind) = index {
+                        res.push(&input[ind..i]);
+                    }
+                    index = Some(i+1);
+                }
+                _ => ()
+            }
+        }
+        if let Some(ind) = index {
+            if ind != input.len() {
+                res.push(&input[ind..]);
+            }
+        }
+        res
+    }
 
     if input.is_empty() {
         Ok(Modifications::None)
     } else {
-        input
-            .trim_end_matches(',')
-            .split(',')
+        split(input).into_iter()
             .map(|m| {
                 if let Some((head, tail)) = m.split_once('@') {
                     let modification = 
@@ -463,8 +518,10 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
                     for set in find_isobaric_sets(
                         bare,
                         args.tolerance,
+                        args.amino_acids.as_deref().unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
                         args.fixed.mods(),
                         args.variable.mods(),
+                        args.include.as_ref(),
                     ) {
                         print!("{}, ", format!("{set}").blue());
                         let _ = std::io::stdout().flush();
@@ -479,8 +536,10 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
                     for set in find_isobaric_sets(
                         bare,
                         args.tolerance,
+                        args.amino_acids.as_deref().unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
                         args.fixed.mods(),
                         args.variable.mods(),
+                        args.include.as_ref(),
                     )
                     .take(limit)
                     {
