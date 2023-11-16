@@ -335,7 +335,7 @@ pub fn show_annotated_mass_alignment(
     alignment: &rustyms::align::Alignment,
     line_width: usize,
     tolerance: MassTolerance,
-    imgt: Allele,
+    imgt: &Allele,
 ) {
     let (identical, similar, gap, length) = alignment.stats();
 
@@ -363,7 +363,6 @@ pub fn show_annotated_mass_alignment(
     );
 
     let mut lines = (String::new(), String::new(), String::new(), String::new());
-    let mut numbers = String::new();
     let mut a = alignment.start_a;
     let mut b = alignment.start_b;
 
@@ -404,6 +403,18 @@ pub fn show_annotated_mass_alignment(
         }
         if region.1 {
             number_tail = region.0.to_string().chars().rev().collect();
+
+            // Compress the region from CDR3 to 3 or C3 depending on how much room is left
+            let len = alignment.path[index..].iter().map(|a| a.step_a).sum::<u8>();
+            if len <= 1 {
+                number_tail = number_tail.chars().next().unwrap().to_string();
+            } else if len <= 4 {
+                number_tail = format!(
+                    "{}{}",
+                    number_tail.chars().next().unwrap(),
+                    number_tail.chars().last().unwrap(),
+                );
+            }
         }
         write!(
             &mut lines.0,
@@ -415,7 +426,8 @@ pub fn show_annotated_mass_alignment(
                 .normal()
                 .color_e(region.0.fg_color())
                 .on_color_e(region.0.bg_color())
-        );
+        )
+        .unwrap();
         write!(
             &mut lines.1,
             "{}",
@@ -443,11 +455,11 @@ pub fn show_annotated_mass_alignment(
                 }
             )
             .on_color_e(region.0.bg_color())
-            .color_e(
+            .color(
                 annotations
-                    .map(|a| a.fg_color())
-                    .or(Some(region.0.fg_color()))
-                    .unwrap_or(Some(colour))
+                    .and_then(|a| a.fg_color())
+                    .or(region.0.fg_color())
+                    .unwrap_or(colour)
             )
         )
         .unwrap();
@@ -515,4 +527,60 @@ pub fn show_annotated_mass_alignment(
     println!("{}", lines.1);
     println!("{}", lines.2);
     println!("{}", lines.3);
+}
+
+pub fn table(data: &[(String, String, String, String, String, String, String)]) {
+    let sizes = data.iter().fold(
+        (0, 0, 0, 0, 0, 0, 0),
+        |(aa, ab, ac, ad, ae, af, ag), (a, b, c, d, e, f, g)| {
+            (
+                aa.max(a.len()),
+                ab.max(b.len()),
+                ac.max(c.len()),
+                ad.max(d.len()),
+                ae.max(e.len()),
+                af.max(f.len()),
+                ag.max(g.len()),
+            )
+        },
+    );
+    println!(
+        "┌{}┬{}┬{}┬{}┬{}┬{}┬{}┐",
+        "─".repeat(sizes.0),
+        "─".repeat(sizes.1),
+        "─".repeat(sizes.2),
+        "─".repeat(sizes.3),
+        "─".repeat(sizes.4),
+        "─".repeat(sizes.5),
+        "─".repeat(sizes.6),
+    );
+    for (a, b, c, d, e, f, g) in data {
+        println!(
+            "│{:w0$}│{:w1$}│{:w2$}│{:w3$}│{:w4$}│{:w5$}│{:w6$}│",
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            w0 = sizes.0,
+            w1 = sizes.1,
+            w2 = sizes.2,
+            w3 = sizes.3,
+            w4 = sizes.4,
+            w5 = sizes.5,
+            w6 = sizes.6,
+        );
+    }
+    println!(
+        "└{}┴{}┴{}┴{}┴{}┴{}┴{}┘",
+        "─".repeat(sizes.0),
+        "─".repeat(sizes.1),
+        "─".repeat(sizes.2),
+        "─".repeat(sizes.3),
+        "─".repeat(sizes.4),
+        "─".repeat(sizes.5),
+        "─".repeat(sizes.6),
+    );
 }
