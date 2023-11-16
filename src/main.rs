@@ -48,6 +48,10 @@ struct Cli {
     #[arg(short = 'n', long, default_value_t = 50)]
     line_width: usize,
 
+    /// The number of hits to show in the tables for file and IMGT alignment
+    #[arg(short = 'N', long, default_value_t = 10)]
+    number_of_hits: usize,
+
     /// The maximal number of isobaric sets the generate, use `all` to generate all options
     #[arg(short, long, default_value_t = IsobaricNumber::Limited(25), value_parser=options_parse)]
     isobaric: IsobaricNumber,
@@ -353,7 +357,7 @@ fn main() {
             .collect();
         alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
         let best = alignments[0].1.clone();
-        let selected: Vec<_> = alignments.into_iter().take(10).collect();
+        let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![(
             "Rank".to_string(),
             "Database id".to_string(),
@@ -400,7 +404,7 @@ fn main() {
             })
             .collect();
         alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
-        let selected: Vec<_> = alignments.into_iter().take(10).collect();
+        let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![(
             "Rank".to_string(),
             "Database id".to_string(),
