@@ -325,7 +325,7 @@ fn main() {
                 args.tolerance,
                 args.alignment_type.ty(),
             );
-            show_mass_alignment(&alignment, args.line_width, args.tolerance);
+            show_annotated_mass_alignment(&alignment, args.line_width, args.tolerance, None);
         } else if x.contains(',') {
             for (x, y) in x.split(',').zip(y.split(',')) {
                 align(&args, x.as_bytes(), y.as_bytes());
@@ -381,7 +381,7 @@ fn main() {
         }
         table(&data);
         println!("Alignment for the best match: ");
-        show_mass_alignment(&best, args.line_width, args.tolerance);
+        show_annotated_mass_alignment(&best, args.line_width, args.tolerance, None);
     } else if let (Some(x), true) = (&args.x, args.second.imgt) {
         assert!(!args.normal, "Cannot use IMGT with normal alignment");
         let seq_b = ComplexPeptide::pro_forma(x).unwrap().assume_linear();    
@@ -428,7 +428,7 @@ fn main() {
         }
         table(&data);
         println!("Alignment for the best match: ");
-        show_annotated_mass_alignment(&selected[0].1, args.line_width, args.tolerance, &selected[0].0);
+        show_annotated_mass_alignment(&selected[0].1, args.line_width, args.tolerance, Some(&selected[0].0));
     } else if let Some(x) = &args.x {
         single_stats(
             &args,

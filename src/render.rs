@@ -121,155 +121,6 @@ pub fn show_alignment(
     println!("{}", lines.2);
 }
 
-pub fn show_mass_alignment(
-    alignment: &rustyms::align::Alignment,
-    line_width: usize,
-    tolerance: MassTolerance,
-) {
-    let (identical, similar, gap, length) = alignment.stats();
-
-    println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nPath: {}\n",
-        format!("{:.3}", identical as f64 / length as f64).bright_blue(),
-        format!("({}/{})", identical, length).dimmed(),
-        format!("{:.3}", similar as f64 / length as f64).blue(),
-        format!("({}/{})", similar, length).dimmed(),
-        format!("{:.3}", gap as f64 / length as f64).cyan(),
-        format!("({}/{})", gap, length).dimmed(),
-        format!("{}", alignment.absolute_score).green(),
-        format!("{:.3}", alignment.normalised_score).green(),
-        alignment
-            .mass_difference()
-            .map_or("??".to_string(), |m| format!("{:.2}", m.value))
-            .yellow(),
-        alignment
-            .ppm()
-            .map_or("??".to_string(), |m| format!("{:.2}", m))
-            .yellow(),
-        format!("Tolerance: {}", tolerance).dimmed(),
-        alignment.short(),
-    );
-
-    let mut lines = (String::new(), String::new(), String::new());
-    let mut numbers = String::new();
-    let mut a = alignment.start_a;
-    let mut b = alignment.start_b;
-
-    #[derive(PartialEq, Eq)]
-    enum StepType {
-        Insertion,
-        Deletion,
-        Match,
-        Mismatch,
-        Special,
-    }
-
-    for (index, step) in alignment.path.iter().enumerate() {
-        let ty = match (step.match_type, step.step_a, step.step_b) {
-            (MatchType::Isobaric, _, _) => StepType::Special, // Catch any 1/1 isobaric sets before they are counted as Match/Mismatch
-            (MatchType::FullIdentity, _, _) => StepType::Match,
-            (MatchType::IdentityMassMismatch, _, _) => StepType::Match,
-            (MatchType::Mismatch, _, _) => StepType::Mismatch,
-            (_, 0, 1) => StepType::Insertion,
-            (_, 1, 0) => StepType::Deletion,
-            _ => StepType::Special,
-        };
-        let (colour, ch) = match ty {
-            StepType::Insertion => ("yellow", "+"),
-            StepType::Deletion => ("yellow", "+"),
-            StepType::Match => ("white", " "),
-            StepType::Mismatch => ("red", "⨯"),
-            StepType::Special => ("yellow", "-"), // ⇤⇥ ⤚---⤙ ├─┤ ║ ⤚⤙ l╴r╶
-        };
-        let len = step.step_a.max(step.step_b) as usize;
-        write!(
-            &mut lines.0,
-            "{}",
-            if step.step_a == 0 {
-                "-".repeat(len)
-            } else {
-                format!(
-                    "{:·<width$}",
-                    alignment.seq_a.sequence[a..a + step.step_a as usize]
-                        .iter()
-                        .map(|a| a.aminoacid.char())
-                        .collect::<String>(),
-                    width = len
-                )
-            }
-            .color(
-                if alignment.seq_a.sequence[a..a + step.step_a as usize]
-                    .iter()
-                    .any(|a| !a.modifications.is_empty())
-                {
-                    "blue"
-                } else {
-                    colour
-                }
-            )
-        )
-        .unwrap();
-        write!(
-            &mut lines.1,
-            "{}",
-            if step.step_b == 0 {
-                "-".repeat(len)
-            } else {
-                format!(
-                    "{:·<width$}",
-                    alignment.seq_b.sequence[b..b + step.step_b as usize]
-                        .iter()
-                        .map(|a| a.aminoacid.char())
-                        .collect::<String>(),
-                    width = len
-                )
-            }
-            .color(
-                if alignment.seq_b.sequence[b..b + step.step_b as usize]
-                    .iter()
-                    .any(|a| !a.modifications.is_empty())
-                {
-                    "blue"
-                } else {
-                    colour
-                }
-            )
-        )
-        .unwrap();
-        let bottom = if ty == StepType::Special {
-            match len {
-                1 => "─".to_string(),
-                2 => "╶╴".to_string(),
-                n => format!("╶{}╴", "─".repeat(n - 2)),
-            }
-        } else {
-            ch.repeat(len)
-        };
-        write!(&mut lines.2, "{}", bottom.color(colour)).unwrap();
-
-        a += step.step_a as usize;
-        b += step.step_b as usize;
-
-        write!(&mut numbers, " ").unwrap();
-        if (index + 1) % 10 == 0 {
-            numbers.truncate(numbers.len() - number_length(index + 1));
-            write!(&mut numbers, "{}", index + 1).unwrap();
-        }
-        if (index + 1) % line_width == 0 {
-            println!("{}", numbers.dimmed());
-            println!("{}", lines.0);
-            println!("{}", lines.1);
-            println!("{}", lines.2);
-            lines = (String::new(), String::new(), String::new());
-            numbers = String::new();
-        }
-    }
-    println!("{}", numbers.dimmed());
-    println!("{}", lines.0);
-    println!("{}", lines.1);
-    println!("{}", lines.2);
-}
-
 trait Legend {
     fn fg_color(&self) -> Option<Color>;
     fn bg_color(&self) -> Option<Color>;
@@ -337,7 +188,7 @@ pub fn show_annotated_mass_alignment(
     alignment: &rustyms::align::Alignment,
     line_width: usize,
     tolerance: MassTolerance,
-    imgt: &Allele,
+    imgt: Option<&Allele>,
 ) {
     let (identical, similar, gap, length) = alignment.stats();
 
@@ -403,25 +254,27 @@ pub fn show_annotated_mass_alignment(
             StepType::Special => (Some(Color::Yellow), "-"), // ⇤⇥ ⤚---⤙ ├─┤ ║ ⤚⤙ l╴r╶
         };
 
-        let region = imgt.region(a + step.step_a as usize).unwrap();
+        let region = imgt.and_then(|imgt| imgt.region(a + step.step_a as usize));
         let len = step.step_a.max(step.step_b) as usize;
 
         const NUMBER_GAP: usize = 10;
-        if region.1 && number_tail.is_empty() && last_region != Some(region.0) {
-            number_tail = format!("{} ", region.0).chars().rev().collect();
+        if let Some(region) = region {
+            if region.1 && number_tail.is_empty() && last_region != Some(region.0) {
+                number_tail = format!("{} ", region.0).chars().rev().collect();
 
-            // Compress the region from CDR3 to 3 or C3 depending on how much room is left
-            let len = alignment.path[index..].iter().map(|a| a.step_a).sum::<u8>();
-            if len <= 1 {
-                number_tail = format!(" {}", number_tail.chars().nth(1).unwrap());
-            } else if len <= 4 {
-                number_tail = format!(
-                    " {}{}",
-                    number_tail.chars().nth(1).unwrap(),
-                    number_tail.chars().last().unwrap(),
-                );
+                // Compress the region from CDR3 to 3 or C3 depending on how much room is left
+                let len = alignment.path[index..].iter().map(|a| a.step_a).sum::<u8>();
+                if len <= 1 {
+                    number_tail = format!(" {}", number_tail.chars().nth(1).unwrap());
+                } else if len <= 4 {
+                    number_tail = format!(
+                        " {}{}",
+                        number_tail.chars().nth(1).unwrap(),
+                        number_tail.chars().last().unwrap(),
+                    );
+                }
+                last_region = Some(region.0);
             }
-            last_region = Some(region.0);
         }
         if (a + number_shift_back) % NUMBER_GAP == 0 && number_tail.is_empty() {
             let mut state = 0;
@@ -491,13 +344,19 @@ pub fn show_annotated_mass_alignment(
             writelines(
                 &mut lines,
                 line_width,
-                (region.0.fg_color(), colour, region.0.bg_color()),
+                (
+                    region.and_then(|r| r.0.fg_color()),
+                    colour,
+                    region.and_then(|r| r.0.bg_color()),
+                ),
                 number_tail.pop().unwrap_or(' '),
                 (
                     a_str[s],
-                    imgt.annotations(a + s.max(step.step_a as usize))
-                        .next()
-                        .and_then(|a| a.fg_color()),
+                    imgt.and_then(|imgt| {
+                        imgt.annotations(a + s.max(step.step_a as usize))
+                            .next()
+                            .and_then(|a| a.fg_color())
+                    }),
                     if alignment.seq_a.sequence[a..a + step.step_a as usize]
                         .iter()
                         .any(|a| !a.modifications.is_empty())
