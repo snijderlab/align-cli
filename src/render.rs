@@ -1,5 +1,6 @@
 use bio::alignment::{Alignment, AlignmentOperation};
-use colored::Colorize;
+use colored::{ColoredString, Colorize};
+use imgt_germlines::Allele;
 use rustyms::{align::MatchType, MassTolerance};
 use std::fmt::Write;
 
@@ -267,4 +268,251 @@ pub fn show_mass_alignment(
     println!("{}", lines.0);
     println!("{}", lines.1);
     println!("{}", lines.2);
+}
+
+trait Legend {
+    fn fg_color(&self) -> Option<&'static str>;
+    fn bg_color(&self) -> Option<&'static str>;
+}
+
+impl Legend for imgt_germlines::Annotation {
+    fn fg_color(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Cysteine1 => "yellow",
+            Self::Cysteine2 => "yellow",
+            Self::Tryptophan => "yellow",
+            Self::Phenylalanine => "yellow",
+        })
+    }
+    fn bg_color(&self) -> Option<&'static str> {
+        None
+    }
+}
+
+impl Legend for imgt_germlines::Region {
+    fn fg_color(&self) -> Option<&'static str> {
+        match self {
+            Self::CDR1 | Self::CDR2 | Self::CDR3 => Some("black"),
+            _ => None,
+        }
+    }
+    fn bg_color(&self) -> Option<&'static str> {
+        match self {
+            Self::CDR1 | Self::CDR2 | Self::CDR3 => Some("red"),
+            _ => None,
+        }
+    }
+}
+
+trait ExtendedColorize {
+    fn style(self, style: &str) -> Self;
+    fn on_color_e(self, color: Option<&str>) -> Self;
+    fn color_e(self, color: Option<&str>) -> Self;
+}
+
+impl ExtendedColorize for ColoredString {
+    fn style(self, style: &str) -> Self {
+        match style {
+            "underline" => self.underline(),
+            _ => self,
+        }
+    }
+    fn on_color_e(self, color: Option<&str>) -> Self {
+        match color {
+            Some(clr) => self.on_color(clr),
+            None => self,
+        }
+    }
+    fn color_e(self, color: Option<&str>) -> Self {
+        match color {
+            Some(clr) => self.color(clr),
+            None => self,
+        }
+    }
+}
+
+pub fn show_annotated_mass_alignment(
+    alignment: &rustyms::align::Alignment,
+    line_width: usize,
+    tolerance: MassTolerance,
+    imgt: Allele,
+) {
+    let (identical, similar, gap, length) = alignment.stats();
+
+    println!(
+        "IMGT: {}\nIdentity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nPath: {}\n",
+        imgt.name().purple(),
+        format!("{:.3}", identical as f64 / length as f64).bright_blue(),
+        format!("({}/{})", identical, length).dimmed(),
+        format!("{:.3}", similar as f64 / length as f64).blue(),
+        format!("({}/{})", similar, length).dimmed(),
+        format!("{:.3}", gap as f64 / length as f64).cyan(),
+        format!("({}/{})", gap, length).dimmed(),
+        format!("{}", alignment.absolute_score).green(),
+        format!("{:.3}", alignment.normalised_score).green(),
+        alignment
+            .mass_difference()
+            .map_or("??".to_string(), |m| format!("{:.2}", m.value))
+            .yellow(),
+        alignment
+            .ppm()
+            .map_or("??".to_string(), |m| format!("{:.2}", m))
+            .yellow(),
+        format!("Tolerance: {}", tolerance).dimmed(),
+        alignment.short(),
+    );
+
+    let mut lines = (String::new(), String::new(), String::new(), String::new());
+    let mut numbers = String::new();
+    let mut a = alignment.start_a;
+    let mut b = alignment.start_b;
+
+    #[derive(PartialEq, Eq)]
+    enum StepType {
+        Insertion,
+        Deletion,
+        Match,
+        Mismatch,
+        Special,
+    }
+
+    let mut number_tail = String::new();
+    for (index, step) in alignment.path.iter().enumerate() {
+        let ty = match (step.match_type, step.step_a, step.step_b) {
+            (MatchType::Isobaric, _, _) => StepType::Special, // Catch any 1/1 isobaric sets before they are counted as Match/Mismatch
+            (MatchType::FullIdentity, _, _) => StepType::Match,
+            (MatchType::IdentityMassMismatch, _, _) => StepType::Match,
+            (MatchType::Mismatch, _, _) => StepType::Mismatch,
+            (_, 0, 1) => StepType::Insertion,
+            (_, 1, 0) => StepType::Deletion,
+            _ => StepType::Special,
+        };
+        let (colour, ch) = match ty {
+            StepType::Insertion => ("yellow", "+"),
+            StepType::Deletion => ("yellow", "+"),
+            StepType::Match => ("white", " "),
+            StepType::Mismatch => ("red", "⨯"),
+            StepType::Special => ("yellow", "-"), // ⇤⇥ ⤚---⤙ ├─┤ ║ ⤚⤙ l╴r╶
+        };
+        // TODO: it uses step_a steps, while these regions and stuff want a single char... (also fixes the weird alignment if it is done based on a single char)
+        let region = imgt.region(a + step.step_a as usize).unwrap();
+        let annotations = imgt.annotations(a + step.step_a as usize).next(); // Only interested in the first annotation
+        let len = step.step_a.max(step.step_b) as usize;
+
+        if a % 10 == 0 && number_tail.is_empty() {
+            number_tail = a.to_string().chars().rev().collect();
+        }
+        if region.1 {
+            number_tail = region.0.to_string().chars().rev().collect();
+        }
+        write!(
+            &mut lines.0,
+            "{}",
+            number_tail
+                .pop()
+                .unwrap_or(' ')
+                .to_string()
+                .normal()
+                .color_e(region.0.fg_color())
+                .on_color_e(region.0.bg_color())
+        );
+        write!(
+            &mut lines.1,
+            "{}",
+            if step.step_a == 0 {
+                "-".repeat(len)
+            } else {
+                format!(
+                    "{:·<width$}",
+                    alignment.seq_a.sequence[a..a + step.step_a as usize]
+                        .iter()
+                        .map(|a| a.aminoacid.char())
+                        .collect::<String>(),
+                    width = len
+                )
+            }
+            .normal()
+            .style(
+                if alignment.seq_a.sequence[a..a + step.step_a as usize]
+                    .iter()
+                    .any(|a| !a.modifications.is_empty())
+                {
+                    "underline"
+                } else {
+                    "normal"
+                }
+            )
+            .on_color_e(region.0.bg_color())
+            .color_e(
+                annotations
+                    .map(|a| a.fg_color())
+                    .or(Some(region.0.fg_color()))
+                    .unwrap_or(Some(colour))
+            )
+        )
+        .unwrap();
+        write!(
+            &mut lines.2,
+            "{}",
+            if step.step_b == 0 {
+                "-".repeat(len)
+            } else {
+                format!(
+                    "{:·<width$}",
+                    alignment.seq_b.sequence[b..b + step.step_b as usize]
+                        .iter()
+                        .map(|a| a.aminoacid.char())
+                        .collect::<String>(),
+                    width = len
+                )
+            }
+            .normal()
+            .style(
+                if alignment.seq_b.sequence[b..b + step.step_b as usize]
+                    .iter()
+                    .any(|a| !a.modifications.is_empty())
+                {
+                    "underline"
+                } else {
+                    "normal"
+                }
+            )
+            .on_color_e(region.0.bg_color())
+            .color(region.0.fg_color().unwrap_or(colour))
+        )
+        .unwrap();
+        let bottom = if ty == StepType::Special {
+            match len {
+                1 => "─".to_string(),
+                2 => "╶╴".to_string(),
+                n => format!("╶{}╴", "─".repeat(n - 2)),
+            }
+        } else {
+            ch.repeat(len)
+        };
+        write!(
+            &mut lines.3,
+            "{}",
+            bottom
+                .normal()
+                .on_color_e(region.0.bg_color())
+                .color(region.0.fg_color().unwrap_or(colour))
+        )
+        .unwrap();
+
+        a += step.step_a as usize;
+        b += step.step_b as usize;
+
+        if (index + 1) % line_width == 0 {
+            println!("{}", lines.0);
+            println!("{}", lines.1);
+            println!("{}", lines.2);
+            println!("{}", lines.3);
+            lines = (String::new(), String::new(), String::new(), String::new());
+        }
+    }
+    println!("{}", lines.0);
+    println!("{}", lines.1);
+    println!("{}", lines.2);
+    println!("{}", lines.3);
 }

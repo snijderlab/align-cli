@@ -31,14 +31,11 @@ struct Cli {
     #[arg()]
     x: Option<String>,
 
-    /// Second sequence
-    #[arg()]
-    y: Option<String>,
+    /// The selection of second sequence, can only be one of these TODO: make a nice enum
+    #[command(flatten)]
+    second: SecondSelection,
 
-    /// A fasta database file to open to align the sequence to, only provide a single sequence for this mode
-    #[arg(short, long)]
-    file: Option<String>,
-
+    /// The type of alignment, can only be one of these
     #[command(flatten)]
     alignment_type: AlignmentType,
 
@@ -120,6 +117,23 @@ impl AlignmentType {
             rustyms::align::Type::Global
         }
     }
+}
+
+#[derive(Args, Debug)]
+#[group(multiple = false)]
+struct SecondSelection {
+    /// Second sequence
+    #[arg()]
+    y: Option<String>,
+
+    /// A fasta database file to open to align the sequence to, only provide a single sequence for this mode
+    #[arg(short, long)]
+    file: Option<String>,
+
+    /// Align against IMGT germline sequences
+    // QVQLVQSGAEVKKPGASVKVSCKASGKTFTGYYMHWVRQAPGQGLEWMGRINPNSGGTNYAQKFQGRVTSTRDTSISTAYMELSRLRSDDTVVYYCAR --imgt -s
+    #[arg(long)]
+    imgt: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -296,20 +310,16 @@ fn modification_parse(input: &str) -> Result<Modification, String> {
 
 fn main() {
     let args = Cli::parse();
-    if args.y.is_some() as u8 + args.file.is_some() as u8 > 1 {
-        panic!("Cannot have multiple secondary sequence sources (y + file) at the same time")
-    }
-    if let (Some(x), Some(y)) = (&args.x, &args.y) {
+    if let (Some(x), Some(y)) = (&args.x, &args.second.y) {
         if !args.normal {
             let a = parse_peptide(x);
             let b = parse_peptide(y);
-            let ty = args.alignment_type.ty();
             let alignment = rustyms::align::align(
                 a.clone().assume_linear(),
                 b.clone().assume_linear(),
                 rustyms::align::BLOSUM62,
                 args.tolerance,
-                ty,
+                args.alignment_type.ty(),
             );
             show_mass_alignment(&alignment, args.line_width, args.tolerance);
         } else if x.contains(',') {
@@ -319,7 +329,7 @@ fn main() {
         } else {
             align(&args, x.as_bytes(), y.as_bytes());
         }
-    } else if let (Some(x), Some(path)) = (&args.x, &args.file) {
+    } else if let (Some(x), Some(path)) = (&args.x, &args.second.file) {
         if args.normal {
             panic!("Can only do the peptide to database matching based on mass")
         }
@@ -421,6 +431,16 @@ fn main() {
         );
         println!("Alignment for the best match: ");
         show_mass_alignment(&best, args.line_width, args.tolerance);
+    } else if let (Some(x), true) = (&args.x, args.second.imgt) {
+        assert!(!args.normal, "Cannot use IMGT with normal alignment");
+        let imgt_selection = imgt_germlines::Selection::default();
+        let imgt_seq = imgt_germlines::germlines(imgt_germlines::Species::HomoSapiens).unwrap().get(&imgt_selection).unwrap().next().unwrap();
+        let seq_b = ComplexPeptide::pro_forma(x).unwrap().assume_linear();
+        let alignment = rustyms::align::align(imgt_seq.sequence.clone(), seq_b, rustyms::align::BLOSUM62,
+        args.tolerance,
+        args.alignment_type.ty(),
+    );
+        show_annotated_mass_alignment(&alignment, args.line_width, args.tolerance, imgt_seq);
     } else if let Some(x) = &args.x {
         single_stats(
             &args,

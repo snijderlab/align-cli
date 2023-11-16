@@ -18,3 +18,4 @@ clap = { version = "4", features = ["derive", "cargo"] }
 colored = "2"
 rustyms = { git = "https://github.com/snijderlab/rustyms", branch = "main" }
 bio = "1.2"
+imgt-germlines = { git = "https://github.com/snijderlab/imgt-germlines" }
