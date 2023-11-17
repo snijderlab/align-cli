@@ -1,7 +1,9 @@
-use bio::alignment::pairwise::{Aligner, Scoring};
+use bio::alignment::{
+    pairwise::{Aligner, Scoring},
+};
 use clap::{Args, Parser};
 use colored::Colorize;
-use imgt_germlines::{Selection, AlleleSelection, Species, Gene, Kind, Segment, Allele};
+use imgt_germlines::{AlleleSelection, Gene, Kind, Segment, Selection, Species};
 use rustyms::{
     find_isobaric_sets,
     modification::{GnoComposition, ReturnModification},
@@ -9,7 +11,7 @@ use rustyms::{
     placement_rule::*,
     AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification,
 };
-use std::{fmt::Display, io::Write, process::exit, collections::HashSet};
+use std::{collections::HashSet, fmt::Display, io::Write, process::exit};
 
 mod render;
 mod stats;
@@ -58,24 +60,24 @@ struct Cli {
     isobaric: IsobaricNumber,
 
     /// All possible fixed modifications that will be used in the isobaric sets generation, separated by commas `,`, commas can be
-    /// escaped by wrapping the entire modification in square brackets `[..]`. 
+    /// escaped by wrapping the entire modification in square brackets `[..]`.
     /// You can overwrite the default placement rules in the same was as for variable modifications.
     #[arg(short = 'F', long, default_value_t = Modifications::None, value_parser=modifications_parse, allow_hyphen_values=true)]
     fixed: Modifications,
 
     /// All possible variable modifications that will be used in the isobaric sets generation, separated by commas `,`, commas can be
-    /// escaped by wrapping the entire modification in square brackets `[..]`. 
-    /// You can overwrite the default placement rules in the following way: `@AA-pos` where `AA` is the list of all amino acids it can be 
-    /// placed or a star to indicate it can be placed on all locations, and `pos` is the position: * -> Anywhere, 
+    /// escaped by wrapping the entire modification in square brackets `[..]`.
+    /// You can overwrite the default placement rules in the following way: `@AA-pos` where `AA` is the list of all amino acids it can be
+    /// placed or a star to indicate it can be placed on all locations, and `pos` is the position: * -> Anywhere,
     /// N/n -> N terminal (protein/peptide), C/c -> C terminal (protein/peptide). The position can be left out which defaults to Anywhere.
     /// Examples for the rules: `Carboxymethyl@C`, `Oxidation@WFH`, `Amidated@*-C`.
     #[arg(short, long, default_value_t = Modifications::None, value_parser=modifications_parse, allow_hyphen_values=true)]
     variable: Modifications,
-    
+
     /// The base to always include in generating isobaric sets. This is assumed to be a simple sequence (for details see rustyms::LinearPeptide::assume_simple).
     #[arg(long, value_parser=peptide_parser)]
     include: Option<LinearPeptide>,
-    
+
     /// Overrule the default set of amino acids used in the isobaric sequences generation. The default set has all amino acids with a defined mass (no I/L in favour of J, no B/Z/X, but with U/O included).
     #[arg(long, value_parser=amino_acids_parser)]
     amino_acids: Option<AminoAcids>,
@@ -135,43 +137,100 @@ struct SecondSelection {
     #[arg(short, long)]
     file: Option<String>,
 
-    /// Align against IMGT germline sequences
-    // QVQLVQSGAEVKKPGASVKVSCKASGKTFTGYYMHWVRQAPGQGLEWMGRINPNSGGTNYAQKFQGRVTSTRDTSISTAYMELSRLRSDDTVVYYCAR --imgt -s
+    /// Align against IMGT germline sequences. 
+    /// 
+    /// You can select either a specific germline using `species:<SPECIES>&<NAME>` with if needed the allele specified using `allele:<NUMBER>`, otherwise it defaults to the first allele. 
+    /// 
+    /// Or you can give a selection using `species:<SPECIES>`, `kind:<KIND>`, `segment:<SEGMENT>`, `allele:<all|first>`. 
+    /// Any of these criteria can be left out to select all of them, except for the allele, leaving that out will select only the first. Combine criteria using `&`.
     #[arg(long, value_parser=imgt_selection_parse)]
     imgt: Option<IMGTSelection>,
 }
 
-
 #[derive(Debug, Clone)]
 enum IMGTSelection {
-    Gene(Species, Gene, AlleleSelection),
-    Search(Option<HashSet<Species>>, Selection),
+    Gene(Species, Gene, Option<usize>),
+    Search(Selection),
 }
 
-impl IMGTSelection {
-    fn sequences(&self) -> impl Iterator<Item=Allele> {
-        // TODO: fix
-        imgt_germlines::germlines(imgt_germlines::Species::HomoSapiens).unwrap().get(&Selection::default()).unwrap()
-    }
-}
-
-fn imgt_selection_parse(s:&str) -> Result<IMGTSelection, String> {
-    let parts = s.split('&');
-    let species = parts.find_map(|p| p.strip_prefix("species:")).map(|s| s.split(',').map(|s| s.parse().map_err(|()| format!("Not a recognised species: {s}"))).collect::<Result<HashSet<Species>, String>>()).transpose()?;
-    let kinds = parts.find_map(|p| p.strip_prefix("kind:")).map(|s| s.split(',').map(|s| s.parse().map_err(|()| format!("Not a recognised kind: {s}"))).collect::<Result<HashSet<Kind>, String>>()).transpose()?;
-    let segments = parts.find_map(|p| p.strip_prefix("segment:")).map(|s| s.split(',').map(|s| s.parse().map_err(|()| format!("Not a recognised segment: {s}"))).collect::<Result<HashSet<Segment>, String>>()).transpose()?;
-    let allele = parts.find_map(|p| p.strip_prefix("allele:")).map(|s| match s {"all" => Ok(AlleleSelection::All), "first" => Ok(AlleleSelection::First), err => Err(format!("Not a valid allele specification: {err}"))}).transpose()?.unwrap_or(AlleleSelection::First    );
-    let gene = parts.find_map(|p| p.strip_prefix("gene:")).or(parts.find(|p| p.starts_with("IG")));
+fn imgt_selection_parse(s: &str) -> Result<IMGTSelection, String> {
+    let species = s.split('&')
+        .find_map(|p| p.strip_prefix("species:"))
+        .map(|s| {
+            s.split(',')
+                .map(|s| {
+                    s.parse()
+                        .map_err(|()| format!("Not a recognised species: {s}"))
+                })
+                .collect::<Result<HashSet<Species>, String>>()
+        })
+        .transpose()?;
+    let kinds = s.split('&')
+        .find_map(|p| p.strip_prefix("kind:"))
+        .map(|s| {
+            s.split(',')
+                .map(|s| {
+                    s.parse()
+                        .map_err(|()| format!("Not a recognised kind: {s}"))
+                })
+                .collect::<Result<HashSet<Kind>, String>>()
+        })
+        .transpose()?;
+    let segments = s.split('&')
+        .find_map(|p| p.strip_prefix("segment:"))
+        .map(|s| {
+            s.split(',')
+                .map(|s| {
+                    s.parse()
+                        .map_err(|()| format!("Not a recognised segment: {s}"))
+                })
+                .collect::<Result<HashSet<Segment>, String>>()
+        })
+        .transpose()?;
+    let gene = s.split('&')
+        .find_map(|p| p.strip_prefix("gene:"))
+        .or(s.split('&').find(|p| p.starts_with("IG")));
 
     if let Some(gene) = gene {
-        let species = species.ok_or("No species specified")?.into_iter().collect::<Vec<_>>();
+        let species = species
+            .ok_or("No species specified")?
+            .into_iter()
+            .collect::<Vec<_>>();
+        let allele = s.split('&')
+            .find_map(|p| p.strip_prefix("allele:"))
+            .and_then(|s| match s {
+                "first" => None,
+                other => Some(
+                    other
+                        .parse::<usize>()
+                        .map_err(|_| format!("Not a valid number for allele selection: {other}")),
+                ),
+            }).transpose()?;
         if species.len() != 1 {
             Err("You have to specify a single species for IMGT gene selection")?
         } else {
-            Ok(IMGTSelection::Gene(species[0], Gene::from_imgt_name(gene)?.0, allele))
+            Ok(IMGTSelection::Gene(
+                species[0],
+                Gene::from_imgt_name(gene)?,
+                allele,
+            ))
         }
     } else {
-        Ok(IMGTSelection::Search(species, Selection { kinds, segments, allele }))
+        let allele = s.split('&')
+            .find_map(|p| p.strip_prefix("allele:"))
+            .map(|s| match s {
+                "all" => Ok(AlleleSelection::All),
+                "first" => Ok(AlleleSelection::First),
+                err => Err(format!("Not a valid allele specification: {err}")),
+            })
+            .transpose()?
+            .unwrap_or(AlleleSelection::First);
+        Ok(IMGTSelection::Search(Selection {
+            species,
+            kinds,
+            segments,
+            allele,
+        }))
     }
 }
 
@@ -202,10 +261,16 @@ fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
     }
 }
 fn peptide_parser(input: &str) -> Result<LinearPeptide, String> {
-    Ok(ComplexPeptide::pro_forma(input).map_err(|e| e.to_string())?.assume_linear().assume_simple())
+    Ok(ComplexPeptide::pro_forma(input)
+        .map_err(|e| e.to_string())?
+        .assume_linear()
+        .assume_simple())
 }
 fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
-    input.chars().map(|c| AminoAcid::try_from(c).map_err(|()| format!("`{c}` is not a valid amino acid"))).collect()
+    input
+        .chars()
+        .map(|c| AminoAcid::try_from(c).map_err(|()| format!("`{c}` is not a valid amino acid")))
+        .collect()
 }
 type AminoAcids = Vec<AminoAcid>;
 #[derive(Debug, Clone)]
@@ -244,14 +309,23 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
             "c" => Ok(Position::AnyCTerm),
             "N" => Ok(Position::ProteinNTerm),
             "n" => Ok(Position::AnyNTerm),
-            _ => Err(format!("'{pos}' is not a valid modification placement position use any of: */N/n/C/c"))
+            _ => Err(format!(
+                "'{pos}' is not a valid modification placement position use any of: */N/n/C/c"
+            )),
         }
     }
     fn parse_aa(aa: &str) -> Result<Option<Vec<AminoAcid>>, String> {
         if aa == "*" {
             Ok(None)
         } else {
-            Ok(Some(aa.chars().map(|c| AminoAcid::try_from(c).map_err(|_| format!("'{c}' is not a valid amino acid"))).collect::<Result<Vec<_>,_>>()?))
+            Ok(Some(
+                aa.chars()
+                    .map(|c| {
+                        AminoAcid::try_from(c)
+                            .map_err(|_| format!("'{c}' is not a valid amino acid"))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            ))
         }
     }
     fn split(input: &str) -> Vec<&str> {
@@ -263,12 +337,12 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
             match c {
                 b'[' => {
                     if index.is_none() || depth == 0 {
-                        index = Some(i+1);
+                        index = Some(i + 1);
                         depth = 1;
                     } else {
                         depth += 1;
                     }
-                } 
+                }
                 b']' if index.is_some() && depth > 0 => {
                     if depth == 1 {
                         res.push(&input[index.unwrap()..i]);
@@ -277,14 +351,14 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
                     } else {
                         depth -= 1;
                     }
-                } 
+                }
                 b',' if depth == 0 => {
                     if let Some(ind) = index {
                         res.push(&input[ind..i]);
                     }
-                    index = Some(i+1);
+                    index = Some(i + 1);
                 }
-                _ => ()
+                _ => (),
             }
         }
         if let Some(ind) = index {
@@ -417,10 +491,10 @@ fn main() {
         table(&data);
         println!("Alignment for the best match: ");
         show_annotated_mass_alignment(&best, args.line_width, args.tolerance, None);
-    } else if let (Some(x), Some(selection)) = (&args.x, args.second.imgt) {
+    } else if let (Some(x), Some(IMGTSelection::Search(selection))) = (&args.x, &args.second.imgt) {
         assert!(!args.normal, "Cannot use IMGT with normal alignment");
-        let seq_b = ComplexPeptide::pro_forma(x).unwrap().assume_linear();    
-        let sequences = selection.sequences();
+        let seq_b = ComplexPeptide::pro_forma(x).unwrap().assume_linear();
+        let sequences = selection.germlines();
         let mut alignments: Vec<_> = sequences
             .into_iter()
             .map(|seq| {
@@ -462,7 +536,33 @@ fn main() {
         }
         table(&data);
         println!("Alignment for the best match: ");
-        show_annotated_mass_alignment(&selected[0].1, args.line_width, args.tolerance, Some(&selected[0].0));
+        show_annotated_mass_alignment(
+            &selected[0].1,
+            args.line_width,
+            args.tolerance,
+            Some(&selected[0].0),
+        );
+    } else if let (Some(x), Some(IMGTSelection::Gene(species, gene, allele))) =
+        (&args.x, &args.second.imgt)
+    {
+        if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
+            let alignment = rustyms::align::align(
+                allele.sequence.clone(),
+                ComplexPeptide::pro_forma(x).unwrap().assume_linear(),
+                rustyms::align::BLOSUM62,
+                args.tolerance,
+                args.alignment_type.ty(),
+            );
+            println!("Selected: {}", allele.name().purple());
+            show_annotated_mass_alignment(
+                &alignment,
+                args.line_width,
+                args.tolerance,
+                Some(&allele),
+            );
+        } else {
+            println!("Could not find specified germline")
+        }
     } else if let Some(x) = &args.x {
         single_stats(
             &args,
@@ -560,7 +660,9 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
                     for set in find_isobaric_sets(
                         bare,
                         args.tolerance,
-                        args.amino_acids.as_deref().unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
+                        args.amino_acids
+                            .as_deref()
+                            .unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
                         args.fixed.mods(),
                         args.variable.mods(),
                         args.include.as_ref(),
@@ -578,7 +680,9 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
                     for set in find_isobaric_sets(
                         bare,
                         args.tolerance,
-                        args.amino_acids.as_deref().unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
+                        args.amino_acids
+                            .as_deref()
+                            .unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
                         args.fixed.mods(),
                         args.variable.mods(),
                         args.include.as_ref(),

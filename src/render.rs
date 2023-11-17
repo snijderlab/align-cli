@@ -263,7 +263,10 @@ pub fn show_annotated_mass_alignment(
                 number_tail = format!("{} ", region.0).chars().rev().collect();
 
                 // Compress the region from CDR3 to 3 or C3 depending on how much room is left
-                let len = alignment.path[index..].iter().map(|a| a.step_a).sum::<u8>();
+                let len = alignment.path[index..]
+                    .iter()
+                    .map(|a| a.step_a as usize)
+                    .sum::<usize>();
                 if len <= 1 {
                     number_tail = format!(" {}", number_tail.chars().nth(1).unwrap());
                 } else if len <= 4 {
