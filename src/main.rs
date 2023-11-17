@@ -1,6 +1,7 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::{Args, Parser};
 use colored::Colorize;
+use imgt_germlines::{Selection, AlleleSelection, Species, Gene, Kind, Segment, Allele};
 use rustyms::{
     find_isobaric_sets,
     modification::{GnoComposition, ReturnModification},
@@ -8,7 +9,7 @@ use rustyms::{
     placement_rule::*,
     AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification,
 };
-use std::{fmt::Display, io::Write, process::exit};
+use std::{fmt::Display, io::Write, process::exit, collections::HashSet};
 
 mod render;
 mod stats;
@@ -136,8 +137,42 @@ struct SecondSelection {
 
     /// Align against IMGT germline sequences
     // QVQLVQSGAEVKKPGASVKVSCKASGKTFTGYYMHWVRQAPGQGLEWMGRINPNSGGTNYAQKFQGRVTSTRDTSISTAYMELSRLRSDDTVVYYCAR --imgt -s
-    #[arg(long)]
-    imgt: bool,
+    #[arg(long, value_parser=imgt_selection_parse)]
+    imgt: Option<IMGTSelection>,
+}
+
+
+#[derive(Debug, Clone)]
+enum IMGTSelection {
+    Gene(Species, Gene, AlleleSelection),
+    Search(Option<HashSet<Species>>, Selection),
+}
+
+impl IMGTSelection {
+    fn sequences(&self) -> impl Iterator<Item=Allele> {
+        // TODO: fix
+        imgt_germlines::germlines(imgt_germlines::Species::HomoSapiens).unwrap().get(&Selection::default()).unwrap()
+    }
+}
+
+fn imgt_selection_parse(s:&str) -> Result<IMGTSelection, String> {
+    let parts = s.split('&');
+    let species = parts.find_map(|p| p.strip_prefix("species:")).map(|s| s.split(',').map(|s| s.parse().map_err(|()| format!("Not a recognised species: {s}"))).collect::<Result<HashSet<Species>, String>>()).transpose()?;
+    let kinds = parts.find_map(|p| p.strip_prefix("kind:")).map(|s| s.split(',').map(|s| s.parse().map_err(|()| format!("Not a recognised kind: {s}"))).collect::<Result<HashSet<Kind>, String>>()).transpose()?;
+    let segments = parts.find_map(|p| p.strip_prefix("segment:")).map(|s| s.split(',').map(|s| s.parse().map_err(|()| format!("Not a recognised segment: {s}"))).collect::<Result<HashSet<Segment>, String>>()).transpose()?;
+    let allele = parts.find_map(|p| p.strip_prefix("allele:")).map(|s| match s {"all" => Ok(AlleleSelection::All), "first" => Ok(AlleleSelection::First), err => Err(format!("Not a valid allele specification: {err}"))}).transpose()?.unwrap_or(AlleleSelection::First    );
+    let gene = parts.find_map(|p| p.strip_prefix("gene:")).or(parts.find(|p| p.starts_with("IG")));
+
+    if let Some(gene) = gene {
+        let species = species.ok_or("No species specified")?.into_iter().collect::<Vec<_>>();
+        if species.len() != 1 {
+            Err("You have to specify a single species for IMGT gene selection")?
+        } else {
+            Ok(IMGTSelection::Gene(species[0], Gene::from_imgt_name(gene)?.0, allele))
+        }
+    } else {
+        Ok(IMGTSelection::Search(species, Selection { kinds, segments, allele }))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -382,11 +417,10 @@ fn main() {
         table(&data);
         println!("Alignment for the best match: ");
         show_annotated_mass_alignment(&best, args.line_width, args.tolerance, None);
-    } else if let (Some(x), true) = (&args.x, args.second.imgt) {
+    } else if let (Some(x), Some(selection)) = (&args.x, args.second.imgt) {
         assert!(!args.normal, "Cannot use IMGT with normal alignment");
         let seq_b = ComplexPeptide::pro_forma(x).unwrap().assume_linear();    
-        let imgt_selection = imgt_germlines::Selection::default();
-        let sequences = imgt_germlines::germlines(imgt_germlines::Species::HomoSapiens).unwrap().get(&imgt_selection).unwrap();
+        let sequences = selection.sequences();
         let mut alignments: Vec<_> = sequences
             .into_iter()
             .map(|seq| {
