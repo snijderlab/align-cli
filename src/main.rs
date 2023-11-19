@@ -181,7 +181,11 @@ fn main() {
                 args.tolerance,
                 args.alignment_type.ty(),
             );
-            println!("Selected: {}", allele.name().purple());
+            println!(
+                "Selected: {} {}",
+                allele.species.scientific_name().to_string().purple(),
+                allele.name().purple()
+            );
             show_annotated_mass_alignment(
                 &alignment,
                 args.line_width,
