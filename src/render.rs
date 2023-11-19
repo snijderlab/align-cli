@@ -1,5 +1,5 @@
 use bio::alignment::{Alignment, AlignmentOperation};
-use colored::{Color, ColoredString, Colorize};
+use colored::{Color, ColoredString, Colorize, Styles};
 use imgt_germlines::Allele;
 use rustyms::{align::MatchType, MassTolerance};
 use std::fmt::Write;
@@ -157,30 +157,174 @@ impl Legend for imgt_germlines::Region {
     }
 }
 
+#[derive(Default, Clone)]
+pub struct Styling {
+    fg: Option<Color>,
+    bg: Option<Color>,
+    styles: Vec<Styles>,
+}
+
+impl Styling {
+    pub const fn none() -> Self {
+        Self {
+            fg: None,
+            bg: None,
+            styles: Vec::new(),
+        }
+    }
+    pub fn with_fg(color: Option<Color>) -> Self {
+        Self {
+            fg: color,
+            ..Self::none()
+        }
+    }
+    pub fn with_bg(color: Option<Color>) -> Self {
+        Self {
+            bg: color,
+            ..Self::none()
+        }
+    }
+    pub fn with_style(style: Styles) -> Self {
+        Self {
+            styles: vec![style],
+            ..Self::none()
+        }
+    }
+    pub fn fg(self, color: Option<Color>) -> Self {
+        Self { fg: color, ..self }
+    }
+    pub fn bg(self, color: Option<Color>) -> Self {
+        Self { bg: color, ..self }
+    }
+    /// If there is no color set already, set the given color
+    pub fn or_fg(self, color: Option<Color>) -> Self {
+        Self {
+            fg: self.fg.or(color),
+            ..self
+        }
+    }
+    /// If there is no color set already, set the given color
+    pub fn or_bg(self, color: Option<Color>) -> Self {
+        Self {
+            bg: self.bg.or(color),
+            ..self
+        }
+    }
+    pub fn style(mut self, style: Styles) -> Self {
+        self.styles.push(style);
+        self
+    }
+    pub fn maybe_style(self, style: Option<Styles>) -> Self {
+        if let Some(style) = style {
+            self.style(style)
+        } else {
+            self
+        }
+    }
+}
+
 trait ExtendedColorize {
-    fn style(self, style: &str) -> Self;
-    fn on_color_e(self, color: Option<Color>) -> Self;
-    fn color_e(self, color: Option<Color>) -> Self;
+    type Output: ExtendedColorize<Output = Self::Output> + Colorize;
+    fn apply_style(&self, style: Option<Styles>) -> Self::Output;
+    fn on_color_e(&self, color: Option<Color>) -> Self::Output;
+    fn color_e(&self, color: Option<Color>) -> Self::Output;
+    fn apply(&self, styles: &Styling) -> Self::Output {
+        styles.styles.iter().fold(
+            self.color_e(styles.fg).on_color_e(styles.bg),
+            |output, style| output.apply_style(Some(*style)),
+        )
+    }
 }
 
 impl ExtendedColorize for ColoredString {
-    fn style(self, style: &str) -> Self {
-        match style {
-            "underline" => self.underline(),
-            _ => self,
+    type Output = Self;
+    fn apply_style(&self, style: Option<Styles>) -> Self {
+        if let Some(style) = style {
+            match style {
+                Styles::Clear => self.clone().clear(),
+                Styles::Bold => self.clone().bold(),
+                Styles::Dimmed => self.clone().dimmed(),
+                Styles::Underline => self.clone().underline(),
+                Styles::Reversed => self.clone().reversed(),
+                Styles::Italic => self.clone().italic(),
+                Styles::Blink => self.clone().blink(),
+                Styles::Hidden => self.clone().hidden(),
+                Styles::Strikethrough => self.clone().strikethrough(),
+            }
+        } else {
+            self.clone()
         }
     }
-    fn on_color_e(self, color: Option<Color>) -> Self {
+    fn on_color_e(&self, color: Option<Color>) -> Self {
+        match color {
+            Some(clr) => self.clone().on_color(clr),
+            None => self.clone(),
+        }
+    }
+    fn color_e(&self, color: Option<Color>) -> Self {
+        match color {
+            Some(clr) => self.clone().color(clr),
+            None => self.clone(),
+        }
+    }
+}
+
+impl ExtendedColorize for &str {
+    type Output = ColoredString;
+    fn apply_style(&self, style: Option<Styles>) -> Self::Output {
+        if let Some(style) = style {
+            match style {
+                Styles::Clear => self.clear(),
+                Styles::Bold => self.bold(),
+                Styles::Dimmed => self.dimmed(),
+                Styles::Underline => self.underline(),
+                Styles::Reversed => self.reversed(),
+                Styles::Italic => self.italic(),
+                Styles::Blink => self.blink(),
+                Styles::Hidden => self.hidden(),
+                Styles::Strikethrough => self.strikethrough(),
+            }
+        } else {
+            self.normal()
+        }
+    }
+    fn on_color_e(&self, color: Option<Color>) -> Self::Output {
         match color {
             Some(clr) => self.on_color(clr),
-            None => self,
+            None => self.normal(),
         }
     }
-    fn color_e(self, color: Option<Color>) -> Self {
+    fn color_e(&self, color: Option<Color>) -> Self::Output {
         match color {
             Some(clr) => self.color(clr),
-            None => self,
+            None => self.normal(),
         }
+    }
+}
+
+impl ExtendedColorize for String {
+    type Output = ColoredString;
+    fn apply_style(&self, style: Option<Styles>) -> Self::Output {
+        self.as_str().apply_style(style)
+    }
+    fn on_color_e(&self, color: Option<Color>) -> Self::Output {
+        self.as_str().on_color_e(color)
+    }
+    fn color_e(&self, color: Option<Color>) -> Self::Output {
+        self.as_str().color_e(color)
+    }
+}
+
+impl ExtendedColorize for char {
+    type Output = ColoredString;
+    fn apply_style(&self, style: Option<Styles>) -> Self::Output {
+        self.to_string().apply_style(style)
+    }
+    fn on_color_e(&self, color: Option<Color>) -> Self::Output {
+        self.to_string().on_color_e(color)
+    }
+    fn color_e(&self, color: Option<Color>) -> Self::Output {
+        self.to_string().color_e(color)
     }
 }
 
@@ -193,7 +337,7 @@ pub fn show_annotated_mass_alignment(
     let (identical, similar, gap, length) = alignment.stats();
 
     println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nPath: {}\n",
+        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nStart A: {}, Start B: {}, Path: {}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
         format!("({}/{})", identical, length).dimmed(),
         format!("{:.3}", similar as f64 / length as f64).blue(),
@@ -211,6 +355,8 @@ pub fn show_annotated_mass_alignment(
             .map_or("??".to_string(), |m| format!("{:.2}", m))
             .yellow(),
         format!("Tolerance: {}", tolerance).dimmed(),
+        alignment.start_a.to_string().magenta(),
+        alignment.start_b.to_string().magenta(),
         alignment.short().dimmed(),
     );
 
@@ -235,6 +381,7 @@ pub fn show_annotated_mass_alignment(
 
     let mut number_shift_back = 1;
     let mut number_tail = String::new();
+    let mut is_number = false;
     let mut last_region = None;
     for (index, step) in alignment.path.iter().enumerate() {
         let ty = match (step.match_type, step.step_a, step.step_b) {
@@ -277,6 +424,7 @@ pub fn show_annotated_mass_alignment(
                     );
                 }
                 last_region = Some(region.0);
+                is_number = false;
             }
         }
         if (a + number_shift_back) % NUMBER_GAP == 0 && number_tail.is_empty() {
@@ -300,6 +448,7 @@ pub fn show_annotated_mass_alignment(
             .rev()
             .collect();
             number_shift_back = (a + NUMBER_GAP + number_shift_back).to_string().len();
+            is_number = true;
         }
 
         let a_str = if step.step_a == 0 {
@@ -352,33 +501,45 @@ pub fn show_annotated_mass_alignment(
                     colour,
                     region.and_then(|r| r.0.bg_color()),
                 ),
-                number_tail.pop().unwrap_or(' '),
                 (
-                    a_str[s],
-                    imgt.and_then(|imgt| {
-                        imgt.annotations(a + s.max(step.step_a as usize))
-                            .next()
-                            .and_then(|a| a.fg_color())
-                    }),
-                    if alignment.seq_a.sequence[a..a + step.step_a as usize]
-                        .iter()
-                        .any(|a| !a.modifications.is_empty())
-                    {
-                        "underline"
+                    number_tail.pop().unwrap_or(' '),
+                    if is_number {
+                        Styling::with_style(Styles::Dimmed)
                     } else {
-                        "normal"
+                        Styling::none()
                     },
                 ),
                 (
+                    a_str[s],
+                    Styling::none()
+                        .fg(imgt.and_then(|imgt| {
+                            imgt.annotations(a + s.max(step.step_a as usize))
+                                .next()
+                                .and_then(|a| a.fg_color())
+                        }))
+                        .maybe_style(
+                            if alignment.seq_a.sequence[a..a + step.step_a as usize]
+                                .iter()
+                                .any(|a| !a.modifications.is_empty())
+                            {
+                                Some(Styles::Underline)
+                            } else {
+                                None
+                            },
+                        ),
+                ),
+                (
                     b_str[s],
-                    if alignment.seq_b.sequence[b..b + step.step_b as usize]
-                        .iter()
-                        .any(|a| !a.modifications.is_empty())
-                    {
-                        "underline"
-                    } else {
-                        "normal"
-                    },
+                    Styling::none().maybe_style(
+                        if alignment.seq_b.sequence[b..b + step.step_b as usize]
+                            .iter()
+                            .any(|a| !a.modifications.is_empty())
+                        {
+                            Some(Styles::Underline)
+                        } else {
+                            None
+                        },
+                    ),
                 ),
                 bottom[s],
             )
@@ -397,44 +558,31 @@ fn writelines(
     lines: &mut (String, String, String, String, usize),
     line_width: usize,
     color: (Option<Color>, Option<Color>, Option<Color>),
-    n: char,
-    a: (char, Option<Color>, &str),
-    b: (char, &str),
+    n: (char, Styling),
+    a: (char, Styling),
+    b: (char, Styling),
     c: char,
 ) {
     let color_fg = color.0.or(color.1);
     write!(
         &mut lines.0,
         "{}",
-        n.to_string().normal().color_e(color.0).on_color_e(color.2)
+        n.0.apply(&n.1.clone().fg(color.0).bg(color.2))
     )
     .unwrap();
     write!(
         &mut lines.1,
         "{}",
-        a.0.to_string()
-            .normal()
-            .color_e(a.1.or(color_fg))
-            .on_color_e(color.2)
-            .style(a.2)
+        a.0.apply(&a.1.clone().or_fg(color_fg).bg(color.2))
     )
     .unwrap();
     write!(
         &mut lines.2,
         "{}",
-        b.0.to_string()
-            .normal()
-            .color_e(color_fg)
-            .on_color_e(color.2)
-            .style(b.1)
+        b.0.apply(&b.1.clone().fg(color_fg).bg(color.2))
     )
     .unwrap();
-    write!(
-        &mut lines.3,
-        "{}",
-        c.to_string().normal().color_e(color_fg).on_color_e(color.2)
-    )
-    .unwrap();
+    write!(&mut lines.3, "{}", c.color_e(color_fg).on_color_e(color.2)).unwrap();
     lines.4 += 1;
 
     if lines.4 % line_width == 0 {
@@ -450,58 +598,40 @@ fn writelines(
     }
 }
 
-pub fn table(data: &[(String, String, String, String, String, String, String)]) {
-    let sizes = data.iter().fold(
-        (0, 0, 0, 0, 0, 0, 0),
-        |(aa, ab, ac, ad, ae, af, ag), (a, b, c, d, e, f, g)| {
-            (
-                aa.max(a.len()),
-                ab.max(b.len()),
-                ac.max(c.len()),
-                ad.max(d.len()),
-                ae.max(e.len()),
-                af.max(f.len()),
-                ag.max(g.len()),
-            )
-        },
-    );
-    println!(
-        "┌{}┬{}┬{}┬{}┬{}┬{}┬{}┐",
-        "─".repeat(sizes.0),
-        "─".repeat(sizes.1),
-        "─".repeat(sizes.2),
-        "─".repeat(sizes.3),
-        "─".repeat(sizes.4),
-        "─".repeat(sizes.5),
-        "─".repeat(sizes.6),
-    );
-    for (a, b, c, d, e, f, g) in data {
-        println!(
-            "│{:w0$}│{:w1$}│{:w2$}│{:w3$}│{:w4$}│{:w5$}│{:w6$}│",
-            a,
-            b,
-            c,
-            d,
-            e,
-            f,
-            g,
-            w0 = sizes.0,
-            w1 = sizes.1,
-            w2 = sizes.2,
-            w3 = sizes.3,
-            w4 = sizes.4,
-            w5 = sizes.5,
-            w6 = sizes.6,
-        );
+pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styling; N]) {
+    let sizes = data.iter().fold([0; N], |mut sizes, row| {
+        for i in 0..N {
+            sizes[i] = sizes[i].max(row[i].len());
+        }
+        sizes
+    });
+    print!("╭");
+    for i in 0..N - 1 {
+        print!("{}┬", "─".repeat(sizes[i]));
     }
-    println!(
-        "└{}┴{}┴{}┴{}┴{}┴{}┴{}┘",
-        "─".repeat(sizes.0),
-        "─".repeat(sizes.1),
-        "─".repeat(sizes.2),
-        "─".repeat(sizes.3),
-        "─".repeat(sizes.4),
-        "─".repeat(sizes.5),
-        "─".repeat(sizes.6),
-    );
+    println!("{}╮", "─".repeat(sizes[N - 1]));
+    if header {
+        print!("│");
+        for i in 0..N {
+            print!("{:w$}│", data[0][i].blue(), w = sizes[i]);
+        }
+        println!();
+        print!("├");
+        for i in 0..N - 1 {
+            print!("{}┼", "─".repeat(sizes[i]));
+        }
+        println!("{}┤", "─".repeat(sizes[N - 1]));
+    }
+    for row in data.iter().skip(usize::from(header)) {
+        print!("│");
+        for i in 0..N {
+            print!("{:w$}│", row[i].apply(&styling[i]), w = sizes[i]);
+        }
+        println!();
+    }
+    print!("╰");
+    for i in 0..N - 1 {
+        print!("{}┴", "─".repeat(sizes[i]));
+    }
+    println!("{}╯", "─".repeat(sizes[N - 1]));
 }
