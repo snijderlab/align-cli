@@ -475,7 +475,7 @@ checksum = "d77f7ec81a6d05a3abb01ab6eb7590f6083d08449fe5a1c8b1e620283546ccb7"
 [[package]]
 name = "imgt-germlines"
 version = "0.1.0"
-source = "git+https://github.com/snijderlab/imgt-germlines#425f14cf324e1a45853cf1e672e729dff0186511"
+source = "git+https://github.com/snijderlab/imgt-germlines#3482126840700e5a2b28314fb3655c0c2ee0a9e0"
 dependencies = [
  "bincode",
  "itertools 0.12.0",
