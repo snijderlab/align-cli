@@ -14,9 +14,9 @@ name = "align"
 path = "src/main.rs"
 
 [dependencies]
+bio = "1.2"
 clap = { version = "4", features = ["derive", "cargo"] }
 colored = "2"
-rustyms = { git = "https://github.com/snijderlab/rustyms", branch = "main" }
-bio = "1.2"
 imgt-germlines = { git = "https://github.com/snijderlab/imgt-germlines" }
 rayon = "1.8"
+rustyms = "0.7.0"
