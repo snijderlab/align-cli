@@ -129,10 +129,11 @@ trait Legend {
 impl Legend for imgt_germlines::Annotation {
     fn fg_color(&self) -> Option<Color> {
         Some(match self {
-            Self::Cysteine1 => Color::Yellow,
-            Self::Cysteine2 => Color::Yellow,
-            Self::Tryptophan => Color::Yellow,
-            Self::Phenylalanine => Color::Yellow,
+            Self::Cysteine1 => Color::Blue,
+            Self::Cysteine2 => Color::Blue,
+            Self::Tryptophan => Color::Blue,
+            Self::Phenylalanine => Color::Blue,
+            Self::NGlycan => Color::Green,
         })
     }
     fn bg_color(&self) -> Option<Color> {
@@ -512,11 +513,8 @@ pub fn show_annotated_mass_alignment(
                 (
                     a_str[s],
                     Styling::none()
-                        .fg(imgt.and_then(|imgt| {
-                            imgt.annotations(a + s.max(step.step_a as usize))
-                                .next()
-                                .and_then(|a| a.fg_color())
-                        }))
+                        .fg(imgt
+                            .and_then(|imgt| imgt.annotations(a).next().and_then(|a| a.fg_color())))
                         .maybe_style(
                             if alignment.seq_a.sequence[a..a + step.step_a as usize]
                                 .iter()
