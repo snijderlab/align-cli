@@ -1,7 +1,7 @@
 use clap::{Args, Parser};
 use imgt_germlines::{AlleleSelection, Gene, Kind, Segment, Selection, Species};
 use rustyms::{
-    modification::{ ReturnModification},
+    modification::ReturnModification,
     placement_rule::*,
     AminoAcid,  ComplexPeptide, LinearPeptide, MassTolerance, Modification,
 };

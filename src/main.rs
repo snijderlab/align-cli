@@ -9,11 +9,14 @@ use rustyms::{
 use std::{io::Write, process::exit};
 
 mod cli;
+mod legend;
 mod render;
 mod stats;
+mod styling;
 
 use cli::*;
 use render::*;
+use styling::*;
 
 fn main() {
     let args = Cli::parse();

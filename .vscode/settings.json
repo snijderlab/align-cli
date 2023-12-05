@@ -3,8 +3,14 @@
         "Amidated",
         "AMINOACIDS",
         "Carboxymethyl",
+        "color",
+        "Colored",
         "germline",
         "imgt",
-        "monoisotopic"
+        "monoisotopic",
+        "Xclip",
+        "xstart",
+        "Yclip",
+        "ystart"
     ]
 }
