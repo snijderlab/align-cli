@@ -155,13 +155,6 @@ pub fn show_annotated_mass_alignment(
         alignment.short().dimmed(),
     );
 
-    let mut lines = (
-        String::new(),
-        String::new(),
-        String::new(),
-        String::new(),
-        0,
-    );
     let mut a = alignment.start_a;
     let mut b = alignment.start_b;
 
@@ -175,6 +168,7 @@ pub fn show_annotated_mass_alignment(
     }
 
     const NUMBER_GAP: usize = 10;
+    let mut writer = CombinedLines::new(line_width);
     let mut number_shift_back = 1;
     let mut number_tail = String::new();
     let mut is_number = false;
@@ -236,13 +230,12 @@ pub fn show_annotated_mass_alignment(
         for index in 0..prefix {
             let a_index = (index >= shift_a).then_some(index.saturating_sub(shift_a));
             let b_index = (index >= shift_b).then_some(index.saturating_sub(shift_b));
-            let (nt, _is_number) = num(a_index.unwrap_or_default(), 0, 1, number_tail);
-            number_tail = nt;
+            number_tail = num(a_index.unwrap_or_default(), 0, 1, number_tail).0;
 
-            write_lines(
-                &mut lines,
-                line_width,
-                (None, None, None),
+            writer.add_column(
+                None,
+                None,
+                None,
                 (
                     number_tail.pop().unwrap_or(' '),
                     Styling::with_style(Styles::Dimmed),
@@ -336,14 +329,10 @@ pub fn show_annotated_mass_alignment(
 
         // Now write to the buffers one character at a time
         for s in 0..len {
-            write_lines(
-                &mut lines,
-                line_width,
-                (
-                    region.and_then(|r| r.0.fg_color()),
-                    colour,
-                    region.and_then(|r| r.0.bg_color()),
-                ),
+            writer.add_column(
+                region.and_then(|r| r.0.fg_color()),
+                colour,
+                region.and_then(|r| r.0.bg_color()),
                 (
                     number_tail.pop().unwrap_or(' '),
                     Styling::none().maybe_style(is_number.then_some(Styles::Dimmed)),
@@ -381,13 +370,12 @@ pub fn show_annotated_mass_alignment(
         for index in 0..len {
             let a_index = (a + index < alignment.seq_a.len()).then_some(a + index);
             let b_index = (b + index < alignment.seq_b.len()).then_some(b + index);
-            let (nt, _is_number) = num(a_index.unwrap_or(alignment.seq_a.len()), 0, 1, number_tail);
-            number_tail = nt;
+            number_tail = num(a_index.unwrap_or(alignment.seq_a.len()), 0, 1, number_tail).0;
 
-            write_lines(
-                &mut lines,
-                line_width,
-                (None, None, None),
+            writer.add_column(
+                None,
+                None,
+                None,
                 (
                     number_tail.pop().unwrap_or(' '),
                     Styling::with_style(Styles::Dimmed),
@@ -416,53 +404,114 @@ pub fn show_annotated_mass_alignment(
     }
 
     // Print any tail
-    println!("{}", lines.0);
-    println!("{}", lines.1);
-    println!("{}", lines.2);
-    println!("{}", lines.3);
+    writer.flush()
 }
 
-fn write_lines(
-    lines: &mut (String, String, String, String, usize),
+struct CombinedLines {
+    numbers: String,
+    numbers_content: bool,
+    a: String,
+    a_content: bool,
+    b: String,
+    b_content: bool,
+    marker: String,
+    marker_content: bool,
+    chars: usize,
     line_width: usize,
-    color: (Option<Color>, Option<Color>, Option<Color>),
-    n: (char, Styling),
-    a: (char, Styling),
-    b: (char, Styling),
-    c: char,
-) {
-    let color_fg = color.0.or(color.1);
-    write!(
-        &mut lines.0,
-        "{}",
-        n.0.apply(&n.1.clone().fg(color.0).bg(color.2))
-    )
-    .unwrap();
-    write!(
-        &mut lines.1,
-        "{}",
-        a.0.apply(&a.1.clone().or_fg(color_fg).bg(color.2))
-    )
-    .unwrap();
-    write!(
-        &mut lines.2,
-        "{}",
-        b.0.apply(&b.1.clone().fg(color_fg).bg(color.2))
-    )
-    .unwrap();
-    write!(&mut lines.3, "{}", c.color_e(color_fg).on_color_e(color.2)).unwrap();
-    lines.4 += 1;
+}
 
-    if lines.4 % line_width == 0 {
-        println!("{}", lines.0);
-        println!("{}", lines.1);
-        println!("{}", lines.2);
-        println!("{}", lines.3);
-        lines.0.clear();
-        lines.1.clear();
-        lines.2.clear();
-        lines.3.clear();
-        lines.4 = 0;
+impl CombinedLines {
+    fn new(line_width: usize) -> Self {
+        Self {
+            numbers: String::with_capacity(line_width),
+            numbers_content: false,
+            a: String::with_capacity(line_width),
+            a_content: false,
+            b: String::with_capacity(line_width),
+            b_content: false,
+            marker: String::with_capacity(line_width),
+            marker_content: false,
+            chars: 0,
+            line_width,
+        }
+    }
+
+    fn add_column(
+        &mut self,
+        region_colour: Option<Color>,
+        type_colour: Option<Color>,
+        background_colour: Option<Color>,
+        n: (char, Styling),
+        a: (char, Styling),
+        b: (char, Styling),
+        c: char,
+    ) {
+        // Determine the foreground colour for the a/b/marker lines
+        let color_fg = region_colour.or(type_colour);
+
+        write!(
+            &mut self.numbers,
+            "{}",
+            n.0.apply(&n.1.clone().fg(region_colour).bg(background_colour))
+        )
+        .unwrap();
+        self.numbers_content |= !n.0.is_whitespace();
+
+        write!(
+            &mut self.a,
+            "{}",
+            a.0.apply(&a.1.clone().or_fg(color_fg).bg(background_colour))
+        )
+        .unwrap();
+        self.a_content |= !a.0.is_whitespace();
+
+        write!(
+            &mut self.b,
+            "{}",
+            b.0.apply(&b.1.clone().fg(color_fg).bg(background_colour))
+        )
+        .unwrap();
+        self.b_content |= !b.0.is_whitespace();
+
+        write!(
+            &mut self.marker,
+            "{}",
+            c.color_e(color_fg).on_color_e(background_colour)
+        )
+        .unwrap();
+        self.marker_content |= !c.is_whitespace();
+
+        // Flush if the maximal number of chars is reached
+        self.chars += 1;
+        if self.chars % self.line_width == 0 {
+            self.flush()
+        }
+    }
+
+    fn flush(&mut self) {
+        // Only print a line if is has content
+        if self.numbers_content {
+            println!("{}", self.numbers);
+        }
+        if self.a_content {
+            println!("{}", self.a);
+        }
+        if self.b_content {
+            println!("{}", self.b);
+        }
+        if self.marker_content {
+            println!("{}", self.marker);
+        }
+        // Reset all internal state
+        self.numbers.clear();
+        self.a.clear();
+        self.b.clear();
+        self.marker.clear();
+        self.numbers_content = false;
+        self.a_content = false;
+        self.b_content = false;
+        self.marker_content = false;
+        self.chars = 0;
     }
 }
 
