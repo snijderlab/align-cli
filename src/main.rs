@@ -1,10 +1,15 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
 use colored::{Colorize, Styles};
+use imgt_germlines::Allele;
 use rayon::prelude::*;
 use rustyms::{
-    find_isobaric_sets, modification::GnoComposition, ontologies::*, placement_rule::*, AminoAcid,
-    Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification,
+    align::{Alignment, MatchType, Piece},
+    find_isobaric_sets,
+    modification::GnoComposition,
+    ontologies::*,
+    placement_rule::*,
+    AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification,
 };
 use std::{io::Write, process::exit};
 
@@ -37,6 +42,7 @@ fn main() {
                 None,
                 args.line_width,
                 args.context,
+                false,
             );
         } else if x.contains(',') {
             for (x, y) in x.split(',').zip(y.split(',')) {
@@ -114,6 +120,7 @@ fn main() {
             None,
             args.line_width,
             args.context,
+            false,
         );
     } else if let (Some(x), Some(IMGTSelection::Search(selection))) = (&args.x, &args.second.imgt) {
         assert!(!args.normal, "Cannot use IMGT with normal alignment");
@@ -185,6 +192,7 @@ fn main() {
             Some(&selected[0].0),
             args.line_width,
             args.context,
+            false,
         );
     } else if let (Some(x), Some(IMGTSelection::Gene(species, gene, allele))) =
         (&args.x, &args.second.imgt)
@@ -208,6 +216,7 @@ fn main() {
                 Some(&allele),
                 args.line_width,
                 args.context,
+                false,
             );
         } else {
             println!("Could not find specified germline")
@@ -216,6 +225,22 @@ fn main() {
         single_stats(&args, parse_peptide(x))
     } else if let Some(modification) = &args.modification {
         modification_stats(modification, args.tolerance);
+    } else if let Some(IMGTSelection::Gene(species, gene, allele)) = &args.second.imgt {
+        if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
+            display_germline(allele, &args);
+        } else {
+            println!("Could not find specified germline")
+        }
+    } else if let Some(IMGTSelection::Search(selection)) = &args.second.imgt {
+        let mut first = true;
+        for allele in selection.germlines() {
+            if !first {
+                println!();
+            } else {
+                first = false;
+            }
+            display_germline(allele, &args);
+        }
     } else {
         println!("Please provide an argument to work with, use --help to see all options.")
     }
@@ -441,4 +466,31 @@ fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
     } else {
         println!("{}", "No defined mass".red())
     }
+}
+
+fn display_germline(allele: Allele, args: &Cli) {
+    let alignment = Alignment {
+        absolute_score: 0,
+        normalised_score: 0.0,
+        path: vec![Piece::new(0, 0, MatchType::FullIdentity, 1, 0); allele.sequence.len()],
+        start_a: 0,
+        start_b: 0,
+        seq_a: allele.sequence.clone(),
+        seq_b: LinearPeptide::default(),
+        ty: rustyms::align::Type::Global,
+    };
+    println!(
+        "{} ({}) {}",
+        allele.species.scientific_name().to_string().purple(),
+        allele.species.common_name(),
+        allele.name().purple()
+    );
+    show_annotated_mass_alignment(
+        &alignment,
+        args.tolerance,
+        Some(&allele),
+        args.line_width,
+        args.context,
+        true,
+    );
 }

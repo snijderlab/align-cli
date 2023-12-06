@@ -9,21 +9,25 @@ use std::{collections::HashSet, fmt::Display};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
-#[command(long_about = "It supports four distinct use cases:
+#[command(long_about = "It supports multiple use cases:
 
 1) Align two sequences `align <X> <Y>`, this shows the best alignment for these two sequences.
 
-2) Align a single peptide to a database `align <X> --file <FILE.fasta>`, this shows the scores for the best matches for this peptide alongside the alignment for the best match.
+2) Align a single peptide to the IMGT database, `align <X> --imgt <SELECTION>` in this way you can select either a specific germline or a search across the whole database.
 
-3) Get information about a single sequence `align <sequence>`, this shows many basic properties (like mass) and generates isobaric sequences to this sequence.
+3) Align a single peptide to a database `align <X> --file <FILE.fasta>`, this shows the scores for the best matches for this peptide alongside the alignment for the best match.
 
-4) Get information about a single modification, `align --modification <MODIFICATION>`, this shows basic properties, and if it is a mass shift, eg `+58.01`, it shows all modifications that have the same mass within the tolerance.")]
+4) Get information about a single sequence `align <sequence>`, this shows many basic properties (like mass) and generates isobaric sequences to this sequence.
+
+5) Get information about a single modification, `align --modification <MODIFICATION>`, this shows basic properties, and if it is a mass shift, eg `+58.01`, it shows all modifications that have the same mass within the tolerance.
+
+6) Get the sequence of one or more germlines `align --imgt <SELECTION>`.")]
 pub struct Cli {
     /// First sequence
     #[arg()]
     pub x: Option<String>,
 
-    /// The selection of second sequence, can only be one of these TODO: make a nice enum
+    /// The selection of second sequence, can only be one of these
     #[command(flatten)]
     pub second: SecondSelection,
 
@@ -98,7 +102,7 @@ pub struct AlignmentType {
     pub global: bool,
 
     /// Use semi-global alignment, meaning that the second sequence has to match fully, while the first sequence can be longer then the alignment.
-    /// When the `--file` mode is used this flag indicates that the given sequence can align semi globally to the provided database sequences.
+    /// When the `--file` or `--imgt` mode is used this flag indicates that the given sequence can align semi globally to the provided database sequences.
     #[arg(short, long)]
     pub semi_global: bool,
 

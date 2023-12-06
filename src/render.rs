@@ -128,32 +128,34 @@ pub fn show_annotated_mass_alignment(
     imgt: Option<&Allele>,
     line_width: usize,
     context: bool,
+    only_display_a: bool,
 ) {
     let (identical, similar, gap, length) = alignment.stats();
-
-    println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nStart A: {}, Start B: {}, Path: {}\n",
-        format!("{:.3}", identical as f64 / length as f64).bright_blue(),
-        format!("({}/{})", identical, length).dimmed(),
-        format!("{:.3}", similar as f64 / length as f64).blue(),
-        format!("({}/{})", similar, length).dimmed(),
-        format!("{:.3}", gap as f64 / length as f64).cyan(),
-        format!("({}/{})", gap, length).dimmed(),
-        format!("{}", alignment.absolute_score).green(),
-        format!("{:.3}", alignment.normalised_score).green(),
-        alignment
-            .mass_difference()
-            .map_or("??".to_string(), |m| format!("{:.2}", m.value))
-            .yellow(),
-        alignment
-            .ppm()
-            .map_or("??".to_string(), |m| format!("{:.2}", m))
-            .yellow(),
-        format!("Tolerance: {}", tolerance).dimmed(),
-        alignment.start_a.to_string().magenta(),
-        alignment.start_b.to_string().magenta(),
-        alignment.short().dimmed(),
-    );
+    if !only_display_a {
+        println!(
+            "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nStart A: {}, Start B: {}, Path: {}\n",
+            format!("{:.3}", identical as f64 / length as f64).bright_blue(),
+            format!("({}/{})", identical, length).dimmed(),
+            format!("{:.3}", similar as f64 / length as f64).blue(),
+            format!("({}/{})", similar, length).dimmed(),
+            format!("{:.3}", gap as f64 / length as f64).cyan(),
+            format!("({}/{})", gap, length).dimmed(),
+            format!("{}", alignment.absolute_score).green(),
+            format!("{:.3}", alignment.normalised_score).green(),
+            alignment
+                .mass_difference()
+                .map_or("??".to_string(), |m| format!("{:.2}", m.value))
+                .yellow(),
+            alignment
+                .ppm()
+                .map_or("??".to_string(), |m| format!("{:.2}", m))
+                .yellow(),
+            format!("Tolerance: {}", tolerance).dimmed(),
+            alignment.start_a.to_string().magenta(),
+            alignment.start_b.to_string().magenta(),
+            alignment.short().dimmed(),
+        );
+    }
 
     let mut a = alignment.start_a;
     let mut b = alignment.start_b;
@@ -168,22 +170,25 @@ pub fn show_annotated_mass_alignment(
     }
 
     const NUMBER_GAP: usize = 10;
-    let mut writer = CombinedLines::new(line_width);
+    let mut writer = CombinedLines::new(line_width, only_display_a);
     let mut number_shift_back = 1;
     let mut number_tail = String::new();
     let mut is_number = false;
     let mut last_region = None;
-    let mut num = |a: usize, index: usize, step: usize, mut number_tail: String| {
+
+    let mut header = |a: usize,
+                      len: usize,
+                      full_width: usize,
+                      step: usize,
+                      mut number_tail: String,
+                      mut is_number,
+                      mut number_shift_back: usize| {
         let region = imgt.and_then(|imgt| imgt.region(a + step));
         if let Some(region) = region {
             if region.1 && number_tail.is_empty() && last_region != Some(region.0) {
                 number_tail = format!("{} ", region.0).chars().rev().collect();
 
                 // Compress the region from CDR3 to 3 or C3 depending on how much room is left
-                let len = alignment.path[index..]
-                    .iter()
-                    .map(|a| a.step_a as usize)
-                    .sum::<usize>();
                 if len <= 1 {
                     number_tail = format!(" {}", number_tail.chars().nth(1).unwrap());
                 } else if len <= 4 {
@@ -198,17 +203,6 @@ pub fn show_annotated_mass_alignment(
             }
         }
         if (a + number_shift_back) % NUMBER_GAP == 0 && number_tail.is_empty() {
-            let mut state = 0;
-            let full_width = alignment
-                .path
-                .iter()
-                .skip(index)
-                .take_while(|s| {
-                    state += s.step_a as usize;
-                    state < number_shift_back
-                })
-                .map(|s| s.step_a.max(s.step_b) as usize)
-                .sum::<usize>();
             number_tail = (a + number_shift_back).to_string();
             number_tail = format!(
                 "{}{number_tail}",
@@ -220,7 +214,7 @@ pub fn show_annotated_mass_alignment(
             number_shift_back = (a + NUMBER_GAP + number_shift_back).to_string().len();
             is_number = true;
         }
-        (number_tail, is_number)
+        (number_tail, is_number, number_shift_back)
     };
     if context {
         let prefix = alignment.start_a.max(alignment.start_b);
@@ -230,7 +224,15 @@ pub fn show_annotated_mass_alignment(
         for index in 0..prefix {
             let a_index = (index >= shift_a).then_some(index.saturating_sub(shift_a));
             let b_index = (index >= shift_b).then_some(index.saturating_sub(shift_b));
-            number_tail = num(a_index.unwrap_or_default(), 0, 1, number_tail).0;
+            (number_tail, is_number, number_shift_back) = header(
+                a_index.unwrap_or_default(),
+                prefix - index,
+                0,
+                1,
+                number_tail,
+                is_number,
+                number_shift_back,
+            );
 
             writer.add_column(
                 None,
@@ -284,8 +286,28 @@ pub fn show_annotated_mass_alignment(
         let region = imgt.and_then(|imgt| imgt.region(a + step.step_a as usize));
         let len = step.step_a.max(step.step_b) as usize;
 
-        let (nt, is_number) = num(a, index, step.step_a as usize, number_tail);
-        number_tail = nt;
+        let mut state = 0;
+        (number_tail, is_number, number_shift_back) = header(
+            a,
+            alignment.path[index..]
+                .iter()
+                .map(|a| a.step_a as usize)
+                .sum::<usize>(),
+            alignment
+                .path
+                .iter()
+                .skip(index)
+                .take_while(|s| {
+                    state += s.step_a as usize;
+                    state < number_shift_back
+                })
+                .map(|s| s.step_a.max(s.step_b) as usize)
+                .sum::<usize>(),
+            step.step_a as usize,
+            number_tail,
+            is_number,
+            number_shift_back,
+        );
 
         let a_str = if step.step_a == 0 {
             "-".repeat(len)
@@ -370,7 +392,15 @@ pub fn show_annotated_mass_alignment(
         for index in 0..len {
             let a_index = (a + index < alignment.seq_a.len()).then_some(a + index);
             let b_index = (b + index < alignment.seq_b.len()).then_some(b + index);
-            number_tail = num(a_index.unwrap_or(alignment.seq_a.len()), 0, 1, number_tail).0;
+            (number_tail, is_number, number_shift_back) = header(
+                a_index.unwrap_or_default(),
+                len - index,
+                0,
+                1,
+                number_tail,
+                is_number,
+                number_shift_back,
+            );
 
             writer.add_column(
                 None,
@@ -418,10 +448,11 @@ struct CombinedLines {
     marker_content: bool,
     chars: usize,
     line_width: usize,
+    only_display_a: bool,
 }
 
 impl CombinedLines {
-    fn new(line_width: usize) -> Self {
+    fn new(line_width: usize, only_display_a: bool) -> Self {
         Self {
             numbers: String::with_capacity(line_width),
             numbers_content: false,
@@ -433,6 +464,7 @@ impl CombinedLines {
             marker_content: false,
             chars: 0,
             line_width,
+            only_display_a,
         }
     }
 
@@ -496,10 +528,10 @@ impl CombinedLines {
         if self.a_content {
             println!("{}", self.a);
         }
-        if self.b_content {
+        if !self.only_display_a && self.b_content {
             println!("{}", self.b);
         }
-        if self.marker_content {
+        if !self.only_display_a && self.marker_content {
             println!("{}", self.marker);
         }
         // Reset all internal state
