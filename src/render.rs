@@ -554,11 +554,14 @@ pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styl
         }
         sizes
     });
-    print!("╭");
-    for size in sizes.iter().take(N - 1).copied() {
-        print!("{}┬", "─".repeat(size));
-    }
-    println!("{}╮", "─".repeat(sizes[N - 1]));
+    let line = |start, middle, end| {
+        print!("{start}");
+        for size in sizes.iter().take(N - 1).copied() {
+            print!("{}{middle}", "─".repeat(size));
+        }
+        println!("{}{end}", "─".repeat(sizes[N - 1]));
+    };
+    line("╭", "┬", "╮");
     if header {
         print!("│");
         #[allow(clippy::needless_range_loop)]
@@ -566,11 +569,7 @@ pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styl
             print!("{:w$}│", data[0][i].blue(), w = sizes[i]);
         }
         println!();
-        print!("├");
-        for size in sizes.iter().take(N - 1).copied() {
-            print!("{}┼", "─".repeat(size));
-        }
-        println!("{}┤", "─".repeat(sizes[N - 1]));
+        line("├", "┼", "┤");
     }
     for row in data.iter().skip(usize::from(header)) {
         print!("│");
@@ -579,9 +578,5 @@ pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styl
         }
         println!();
     }
-    print!("╰");
-    for size in sizes.iter().take(N - 1).copied() {
-        print!("{}┴", "─".repeat(size));
-    }
-    println!("{}╯", "─".repeat(sizes[N - 1]));
+    line("╰", "┴", "╯");
 }
