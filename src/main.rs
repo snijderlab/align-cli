@@ -31,7 +31,13 @@ fn main() {
                 args.tolerance,
                 args.alignment_type.ty(),
             );
-            show_annotated_mass_alignment(&alignment, args.line_width, args.tolerance, None);
+            show_annotated_mass_alignment(
+                &alignment,
+                args.tolerance,
+                None,
+                args.line_width,
+                args.context,
+            );
         } else if x.contains(',') {
             for (x, y) in x.split(',').zip(y.split(',')) {
                 align(&args, x.as_bytes(), y.as_bytes());
@@ -102,7 +108,13 @@ fn main() {
             "Alignment for the best match".underline().italic(),
             selected[0].0.id.dimmed()
         );
-        show_annotated_mass_alignment(&selected[0].1, args.line_width, args.tolerance, None);
+        show_annotated_mass_alignment(
+            &selected[0].1,
+            args.tolerance,
+            None,
+            args.line_width,
+            args.context,
+        );
     } else if let (Some(x), Some(IMGTSelection::Search(selection))) = (&args.x, &args.second.imgt) {
         assert!(!args.normal, "Cannot use IMGT with normal alignment");
         let seq_b = parse_peptide(x);
@@ -169,9 +181,10 @@ fn main() {
         );
         show_annotated_mass_alignment(
             &selected[0].1,
-            args.line_width,
             args.tolerance,
             Some(&selected[0].0),
+            args.line_width,
+            args.context,
         );
     } else if let (Some(x), Some(IMGTSelection::Gene(species, gene, allele))) =
         (&args.x, &args.second.imgt)
@@ -191,9 +204,10 @@ fn main() {
             );
             show_annotated_mass_alignment(
                 &alignment,
-                args.line_width,
                 args.tolerance,
                 Some(&allele),
+                args.line_width,
+                args.context,
             );
         } else {
             println!("Could not find specified germline")

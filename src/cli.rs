@@ -40,6 +40,10 @@ pub struct Cli {
     #[arg(short = 'n', long, default_value_t = 50)]
     pub line_width: usize,
 
+    /// Toggles the showing of additional context for the match (only useful on non global alignments)
+    #[arg(short = 'c', long)]
+    pub context: bool,
+
     /// The number of hits to show in the tables for file and IMGT alignment
     #[arg(short = 'N', long, default_value_t = 10)]
     pub number_of_hits: usize,
