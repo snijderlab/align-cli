@@ -1,5 +1,5 @@
 use clap::{Args, Parser};
-use imgt_germlines::{AlleleSelection, Gene, Kind, Segment, Selection, Species};
+use imgt_germlines::{AlleleSelection, Gene, GeneType, ChainType, Selection, Species};
 use rustyms::{
     modification::ReturnModification,
     placement_rule::*,
@@ -86,6 +86,10 @@ pub struct Cli {
     /// A modification you want details on, if it is a mass shift modification eg `+58.01` it will show all predefined modifications that are within the tolerance of this mass
     #[arg(short, long, value_parser=modification_parse, allow_hyphen_values=true)]
     pub modification: Option<Modification>,
+
+    /// To turn on fancy display of germlines and compositions
+    #[arg(long)]
+    pub fancy: bool,
 }
 
 #[test]
@@ -162,33 +166,33 @@ fn imgt_selection_parse(s: &str) -> Result<IMGTSelection, String> {
                 .collect::<Result<HashSet<Species>, String>>()
         })
         .transpose()?;
-    let kinds = s.split('&')
-        .find_map(|p| p.strip_prefix("kind:"))
+    let chains = s.split('&')
+        .find_map(|p| p.strip_prefix("chain:"))
         .map(|s| {
             s.split(',')
                 .map(|s| {
                     s.parse()
-                        .map_err(|()| format!("Not a recognised kind: {s}"))
+                        .map_err(|()| format!("Not a recognised chain: {s}"))
                 })
-                .collect::<Result<HashSet<Kind>, String>>()
+                .collect::<Result<HashSet<ChainType>, String>>()
         })
         .transpose()?;
-    let segments = s.split('&')
-        .find_map(|p| p.strip_prefix("segment:"))
-        .map(|s| {
-            s.split(',')
-                .map(|s| {
-                    s.parse()
-                        .map_err(|()| format!("Not a recognised segment: {s}"))
-                })
-                .collect::<Result<HashSet<Segment>, String>>()
-        })
-        .transpose()?;
-    let gene = s.split('&')
+    let genes = s.split('&')
         .find_map(|p| p.strip_prefix("gene:"))
+        .map(|s| {
+            s.split(',')
+                .map(|s| {
+                    s.parse()
+                        .map_err(|()| format!("Not a recognised gene: {s}"))
+                })
+                .collect::<Result<HashSet<GeneType>, String>>()
+        })
+        .transpose()?;
+    let name = s.split('&')
+        .find_map(|p| p.strip_prefix("name:"))
         .or(s.split('&').find(|p| p.starts_with("IG")));
 
-    if let Some(gene) = gene {
+    if let Some(name) = name {
         let species = species
             .ok_or("No species specified")?
             .into_iter()
@@ -208,7 +212,7 @@ fn imgt_selection_parse(s: &str) -> Result<IMGTSelection, String> {
         } else {
             Ok(IMGTSelection::Gene(
                 species[0],
-                Gene::from_imgt_name(gene)?,
+                Gene::from_imgt_name(name)?,
                 allele,
             ))
         }
@@ -224,8 +228,8 @@ fn imgt_selection_parse(s: &str) -> Result<IMGTSelection, String> {
             .unwrap_or(AlleleSelection::First);
         Ok(IMGTSelection::Search(Selection {
             species,
-            kinds,
-            segments,
+            chains,
+            genes,
             allele,
         }))
     }
@@ -355,6 +359,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
                     }
                     index = Some(i + 1);
                 }
+                _ if index.is_none() && !c.is_ascii_whitespace() => index = Some(i),
                 _ => (),
             }
         }

@@ -158,7 +158,11 @@ fn main() {
             data.push([
                 (rank + 1).to_string(),
                 imgt.species.scientific_name().to_string(),
-                imgt.name(),
+                if args.fancy {
+                    imgt.fancy_name()
+                } else {
+                    imgt.name()
+                },
                 alignment.absolute_score.to_string(),
                 format!("{:.3}", alignment.normalised_score),
                 format!("{:.3}", stats.0 as f64 / stats.3 as f64),
@@ -184,7 +188,11 @@ fn main() {
             "{} ({} {})",
             "Alignment for the best match".underline().italic(),
             selected[0].0.species.scientific_name().dimmed(),
-            selected[0].0.name().dimmed(),
+            if args.fancy {
+                selected[0].0.fancy_name().dimmed()
+            } else {
+                selected[0].0.name().dimmed()
+            },
         );
         show_annotated_mass_alignment(
             &selected[0].1,
@@ -208,7 +216,11 @@ fn main() {
             println!(
                 "Selected: {} {}",
                 allele.species.scientific_name().to_string().purple(),
-                allele.name().purple()
+                if args.fancy {
+                    allele.fancy_name().purple()
+                } else {
+                    allele.name().purple()
+                }
             );
             show_annotated_mass_alignment(
                 &alignment,
@@ -224,7 +236,7 @@ fn main() {
     } else if let Some(x) = &args.x {
         single_stats(&args, parse_peptide(x))
     } else if let Some(modification) = &args.modification {
-        modification_stats(modification, args.tolerance);
+        modification_stats(&args, modification, args.tolerance);
     } else if let Some(IMGTSelection::Gene(species, gene, allele)) = &args.second.imgt {
         if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
             display_germline(allele, &args);
@@ -313,7 +325,11 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
         );
         println!(
             "Composition: {} {}",
-            seq.bare_formula().unwrap().hill_notation_fancy().green(),
+            if args.fancy {
+                seq.bare_formula().unwrap().hill_notation_fancy().green()
+            } else {
+                seq.bare_formula().unwrap().hill_notation().green()
+            },
             "(no N/C terminal taken into account)".dimmed(),
         );
         if !matches!(args.isobaric, IsobaricNumber::Limited(0)) {
@@ -367,7 +383,7 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
     }
 }
 
-fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
+fn modification_stats(args: &Cli, modification: &Modification, tolerance: MassTolerance) {
     if let Modification::Mass(mass) = modification {
         println!(
             "All ontology modifications close to the given monoisotopic mass: {}",
@@ -387,7 +403,11 @@ fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
                         modification.formula().monoisotopic_mass().unwrap().value
                     )
                     .blue(),
-                    modification.formula().hill_notation_fancy().green(),
+                    if args.fancy {
+                        modification.formula().hill_notation_fancy().green()
+                    } else {
+                        modification.formula().hill_notation().green()
+                    },
                 );
             }
         }
@@ -404,7 +424,11 @@ fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
         );
         println!(
             "Composition: {}",
-            modification.formula().hill_notation_fancy().green(),
+            if args.fancy {
+                modification.formula().hill_notation_fancy().green()
+            } else {
+                modification.formula().hill_notation().green()
+            },
         );
         if let Modification::Predefined(_, rules, ontology, name, index) = modification {
             println!(
@@ -483,7 +507,11 @@ fn display_germline(allele: Allele, args: &Cli) {
         "{} ({}) {}",
         allele.species.scientific_name().to_string().purple(),
         allele.species.common_name(),
-        allele.name().purple()
+        if args.fancy {
+            allele.fancy_name().purple()
+        } else {
+            allele.name().purple()
+        },
     );
     show_annotated_mass_alignment(
         &alignment,

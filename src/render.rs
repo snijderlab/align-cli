@@ -439,7 +439,6 @@ pub fn show_annotated_mass_alignment(
 
 struct CombinedLines {
     numbers: String,
-    numbers_content: bool,
     a: String,
     a_content: bool,
     b: String,
@@ -455,7 +454,6 @@ impl CombinedLines {
     fn new(line_width: usize, only_display_a: bool) -> Self {
         Self {
             numbers: String::with_capacity(line_width),
-            numbers_content: false,
             a: String::with_capacity(line_width),
             a_content: false,
             b: String::with_capacity(line_width),
@@ -487,7 +485,6 @@ impl CombinedLines {
             n.0.apply(&n.1.clone().fg(region_colour).bg(background_colour))
         )
         .unwrap();
-        self.numbers_content |= !n.0.is_whitespace();
 
         write!(
             &mut self.a,
@@ -522,9 +519,7 @@ impl CombinedLines {
 
     fn flush(&mut self) {
         // Only print a line if is has content
-        if self.numbers_content {
-            println!("{}", self.numbers);
-        }
+        println!("{}", self.numbers);
         if self.a_content {
             println!("{}", self.a);
         }
@@ -539,7 +534,6 @@ impl CombinedLines {
         self.a.clear();
         self.b.clear();
         self.marker.clear();
-        self.numbers_content = false;
         self.a_content = false;
         self.b_content = false;
         self.marker_content = false;
