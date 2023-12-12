@@ -272,9 +272,8 @@ fn main() {
         j_alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let j_alignment = j_alignments.first().unwrap();
         println!(
-            "{} {}",
-            "Alignment for the best V gene match".underline().italic(),
-            selected[0].0.species.scientific_name().dimmed(),
+            "Best scoring species: {}",
+            selected[0].0.species.scientific_name().green(),
         );
         let v_alignment = Alignment {
             seq_b: selected[0]

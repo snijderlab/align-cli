@@ -27,7 +27,15 @@ pub fn show_annotated_mass_alignment(
         show_alignment_header(alignment, tolerance);
     }
     let mut writer = CombinedLines::new(line_width, only_display_a);
-    show_alignment_inner(&mut writer, alignment, imgt, context, None);
+    show_alignment_inner(
+        &mut writer,
+        alignment,
+        imgt,
+        context,
+        None,
+        false,
+        String::new(),
+    );
     writer.flush();
 }
 
@@ -51,12 +59,14 @@ pub fn show_chained_annotated_mass_alignment(
     );
     show_alignment_header(&alignment2.1, tolerance);
     let mut writer = CombinedLines::new(line_width, false);
-    show_alignment_inner(
+    let number_tail = show_alignment_inner(
         &mut writer,
         &alignment1.1,
         Some(alignment1.0),
         context,
         None,
+        true,
+        String::new(),
     );
     show_alignment_inner(
         &mut writer,
@@ -64,6 +74,8 @@ pub fn show_chained_annotated_mass_alignment(
         Some(&alignment2.0),
         context,
         Some(Region::CDR3),
+        false,
+        number_tail,
     );
     writer.flush();
 }
@@ -74,14 +86,16 @@ fn show_alignment_inner(
     imgt: Option<&Allele>,
     context: bool,
     start_context_override: Option<Region>,
-) {
+    room_on_end: bool,
+    number_tail: String,
+) -> String {
     let mut a = alignment.start_a;
     let mut b = alignment.start_b;
     const NUMBER_GAP: usize = 10;
     let mut number_shift_back = 1;
-    let mut number_tail = String::new();
+    let mut number_tail = number_tail;
     let mut is_number = false;
-    let mut last_region = None;
+    let mut last_region = start_context_override;
 
     let mut header = |a: usize,
                       len: usize,
@@ -89,21 +103,29 @@ fn show_alignment_inner(
                       step: usize,
                       mut number_tail: String,
                       mut is_number,
-                      mut number_shift_back: usize| {
+                      mut number_shift_back: usize,
+                      room_on_end: bool,
+                      skip_first: bool| {
         let region = imgt.and_then(|imgt| imgt.region(a + step));
         if let Some(region) = region {
-            if region.1 && number_tail.is_empty() && last_region != Some(region.0) {
+            if region.1
+                && number_tail.is_empty()
+                && last_region != Some(region.0)
+                && !(skip_first && last_region == start_context_override)
+            {
                 number_tail = format!("{} ", region.0).chars().rev().collect();
 
                 // Compress the region from CDR3 to 3 or C3 depending on how much room is left
-                if len <= 1 {
-                    number_tail = format!(" {}", number_tail.chars().nth(1).unwrap());
-                } else if len <= 4 {
-                    number_tail = format!(
-                        " {}{}",
-                        number_tail.chars().nth(1).unwrap(),
-                        number_tail.chars().last().unwrap(),
-                    );
+                if !room_on_end && len == full_width {
+                    if len <= 1 {
+                        number_tail = format!(" {}", number_tail.chars().nth(1).unwrap());
+                    } else if len <= 4 {
+                        number_tail = format!(
+                            " {}{}",
+                            number_tail.chars().nth(1).unwrap(),
+                            number_tail.chars().last().unwrap(),
+                        );
+                    }
                 }
                 last_region = Some(region.0);
                 is_number = false;
@@ -139,6 +161,8 @@ fn show_alignment_inner(
                 number_tail,
                 is_number,
                 number_shift_back,
+                room_on_end,
+                start_context_override.is_some(),
             );
             let base_style = start_context_override
                 .map(|_| Styling::none())
@@ -214,6 +238,8 @@ fn show_alignment_inner(
             number_tail,
             is_number,
             number_shift_back,
+            room_on_end,
+            false,
         );
 
         let a_str = if step.step_a == 0 {
@@ -307,6 +333,8 @@ fn show_alignment_inner(
                 number_tail,
                 is_number,
                 number_shift_back,
+                room_on_end,
+                false,
             );
 
             writer.add_column(
@@ -339,6 +367,7 @@ fn show_alignment_inner(
             );
         }
     }
+    number_tail
 }
 
 pub fn show_alignment_header(alignment: &rustyms::align::Alignment, tolerance: MassTolerance) {
