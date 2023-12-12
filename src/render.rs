@@ -1,126 +1,10 @@
-use bio::alignment::{Alignment, AlignmentOperation};
 use colored::{Color, Colorize, Styles};
 use imgt_germlines::{Allele, Region};
 use rustyms::{align::MatchType, MassTolerance};
 use std::fmt::Write;
 
 use crate::legend::*;
-use crate::{stats::*, styling::*};
-
-pub fn show_alignment(
-    alignment: &Alignment,
-    sequence_x: &[u8],
-    sequence_y: &[u8],
-    semi_global: bool,
-    line_width: usize,
-) {
-    let (identical, similar, gaps, length) = score_stats(alignment, sequence_x, sequence_y);
-
-    println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {:} {}, Score: {}{}\n",
-        format!("{:.3}", identical as f64 / length as f64).blue(),
-        format!("({}/{})", identical, length).dimmed(),
-        format!("{:.3}", similar as f64 / length as f64).cyan(),
-        format!("({}/{})", similar, length).dimmed(),
-        format!("{:.3}", gaps as f64 / length as f64).green(),
-        format!("({}/{})", gaps, length).dimmed(),
-        format!("{}", alignment.score).yellow(),
-        if semi_global {
-            format!("\nCIGAR: {}", alignment.cigar(false))
-        } else {
-            String::new()
-        }
-    );
-
-    macro_rules! line {
-        ($lines:ident, $x:expr, $y: expr, $c:expr, $colour:ident) => {
-            write!(&mut $lines.0, "{}", $x.$colour()).unwrap();
-            write!(&mut $lines.1, "{}", $y.$colour()).unwrap();
-            write!(&mut $lines.2, "{}", $c.$colour()).unwrap();
-        };
-    }
-
-    let mut lines = (String::new(), String::new(), String::new());
-    let mut numbers = String::new();
-    let mut x = alignment.xstart;
-    let mut y = alignment.ystart;
-    // Similar: · Gap: ◯ Identical: ∘ ⏺ ∘◯◦ ⚪ ⚫ ⬤ ⭘ 🞄 ∘ ○ ● ◦ ◯ ⴰ ⨉⨯+-
-    for (index, step) in alignment.operations.iter().enumerate() {
-        match step {
-            AlignmentOperation::Del => {
-                line!(
-                    lines,
-                    "-",
-                    String::from_utf8_lossy(&[sequence_y[y]]),
-                    "+",
-                    yellow
-                );
-                y += 1;
-            }
-            AlignmentOperation::Ins => {
-                line!(
-                    lines,
-                    String::from_utf8_lossy(&[sequence_x[x]]),
-                    "-",
-                    "+",
-                    yellow
-                );
-                x += 1;
-            }
-            AlignmentOperation::Subst => {
-                if SIMILAR.contains(&(sequence_x[x], sequence_y[y])) {
-                    line!(
-                        lines,
-                        String::from_utf8_lossy(&[sequence_x[x]]),
-                        String::from_utf8_lossy(&[sequence_y[y]]),
-                        "-",
-                        green
-                    );
-                } else {
-                    line!(
-                        lines,
-                        String::from_utf8_lossy(&[sequence_x[x]]),
-                        String::from_utf8_lossy(&[sequence_y[y]]),
-                        "⨯",
-                        red
-                    );
-                }
-                x += 1;
-                y += 1;
-            }
-            AlignmentOperation::Match => {
-                line!(
-                    lines,
-                    String::from_utf8_lossy(&[sequence_x[x]]),
-                    String::from_utf8_lossy(&[sequence_y[y]]),
-                    " ",
-                    normal
-                );
-                x += 1;
-                y += 1;
-            }
-            AlignmentOperation::Xclip(_) => todo!(),
-            AlignmentOperation::Yclip(_) => todo!(),
-        }
-        write!(&mut numbers, " ").unwrap();
-        if (index + 1) % 10 == 0 {
-            numbers.truncate(numbers.len() - number_length(index + 1));
-            write!(&mut numbers, "{}", index + 1).unwrap();
-        }
-        if (index + 1) % line_width == 0 {
-            println!("{}", numbers.dimmed());
-            println!("{}", lines.0);
-            println!("{}", lines.1);
-            println!("{}", lines.2);
-            lines = (String::new(), String::new(), String::new());
-            numbers = String::new();
-        }
-    }
-    println!("{}", numbers.dimmed());
-    println!("{}", lines.0);
-    println!("{}", lines.1);
-    println!("{}", lines.2);
-}
+use crate::styling::*;
 
 #[derive(PartialEq, Eq)]
 enum StepType {
@@ -142,8 +26,8 @@ pub fn show_annotated_mass_alignment(
     if !only_display_a {
         show_alignment_header(alignment, tolerance);
     }
-    let mut writer = CombinedLines::new(line_width, only_display_a, false);
-    show_alignment_inner(&mut writer, alignment, imgt, context, 0, None);
+    let mut writer = CombinedLines::new(line_width, only_display_a);
+    show_alignment_inner(&mut writer, alignment, imgt, context, None);
     writer.flush();
 }
 
@@ -154,15 +38,24 @@ pub fn show_chained_annotated_mass_alignment(
     line_width: usize,
     context: bool,
 ) {
+    println!(
+        "{}: {}",
+        "V gene".blue(),
+        format!("{} / {}", alignment1.0.name(), alignment1.0.fancy_name(),).purple(),
+    );
     show_alignment_header(&alignment1.1, tolerance);
+    println!(
+        "{}: {}",
+        "J gene".blue(),
+        format!("{} / {}", alignment2.0.name(), alignment2.0.fancy_name(),).purple(),
+    );
     show_alignment_header(&alignment2.1, tolerance);
-    let mut writer = CombinedLines::new(line_width, false, true);
+    let mut writer = CombinedLines::new(line_width, false);
     show_alignment_inner(
         &mut writer,
         &alignment1.1,
         Some(alignment1.0),
         context,
-        0,
         None,
     );
     show_alignment_inner(
@@ -170,7 +63,6 @@ pub fn show_chained_annotated_mass_alignment(
         &alignment2.1,
         Some(&alignment2.0),
         context,
-        alignment1.1.start_b + alignment1.1.len_b(),
         Some(Region::CDR3),
     );
     writer.flush();
@@ -181,7 +73,6 @@ fn show_alignment_inner(
     alignment: &rustyms::align::Alignment,
     imgt: Option<&Allele>,
     context: bool,
-    start_number: usize,
     start_context_override: Option<Region>,
 ) {
     let mut a = alignment.start_a;
@@ -218,8 +109,8 @@ fn show_alignment_inner(
                 is_number = false;
             }
         }
-        if (start_number + a + number_shift_back) % NUMBER_GAP == 0 && number_tail.is_empty() {
-            number_tail = (start_number + a + number_shift_back).to_string();
+        if (a + number_shift_back) % NUMBER_GAP == 0 && number_tail.is_empty() {
+            number_tail = (a + number_shift_back).to_string();
             number_tail = format!(
                 "{}{number_tail}",
                 " ".repeat(full_width.saturating_sub(number_tail.len() - 1))
@@ -227,9 +118,7 @@ fn show_alignment_inner(
             .chars()
             .rev()
             .collect();
-            number_shift_back = (start_number + a + NUMBER_GAP + number_shift_back)
-                .to_string()
-                .len();
+            number_shift_back = (a + NUMBER_GAP + number_shift_back).to_string().len();
             is_number = true;
         }
         (number_tail, is_number, number_shift_back)
@@ -251,18 +140,18 @@ fn show_alignment_inner(
                 is_number,
                 number_shift_back,
             );
+            let base_style = start_context_override
+                .map(|_| Styling::none())
+                .unwrap_or(Styling::with_style(Styles::Dimmed));
 
             writer.add_column(
                 start_context_override.and_then(|r| r.fg_color()),
                 None,
                 start_context_override.and_then(|r| r.bg_color()),
-                (
-                    number_tail.pop().unwrap_or(' '),
-                    Styling::with_style(Styles::Dimmed),
-                ),
+                (number_tail.pop().unwrap_or(' '), base_style.clone()),
                 (
                     a_index.map_or(' ', |a| alignment.seq_a.sequence[a].aminoacid.char()),
-                    Styling::with_style(Styles::Dimmed).maybe_style(a_index.and_then(|a| {
+                    base_style.clone().maybe_style(a_index.and_then(|a| {
                         alignment.seq_a.sequence[a..a + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
@@ -271,7 +160,7 @@ fn show_alignment_inner(
                 ),
                 (
                     b_index.map_or(' ', |b| alignment.seq_b.sequence[b].aminoacid.char()),
-                    Styling::with_style(Styles::Dimmed).maybe_style(b_index.and_then(|b| {
+                    base_style.clone().maybe_style(b_index.and_then(|b| {
                         alignment.seq_b.sequence[b..b + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
@@ -490,11 +379,10 @@ struct CombinedLines {
     chars: usize,
     line_width: usize,
     only_display_a: bool,
-    flip: bool,
 }
 
 impl CombinedLines {
-    fn new(line_width: usize, only_display_a: bool, flip: bool) -> Self {
+    fn new(line_width: usize, only_display_a: bool) -> Self {
         Self {
             numbers: String::with_capacity(line_width),
             a: String::with_capacity(line_width),
@@ -506,7 +394,6 @@ impl CombinedLines {
             chars: 0,
             line_width,
             only_display_a,
-            flip,
         }
     }
 
@@ -564,20 +451,11 @@ impl CombinedLines {
     fn flush(&mut self) {
         // Only print a line if is has content
         println!("{}", self.numbers);
-        if self.flip {
-            if !self.only_display_a && self.b_content {
-                println!("{}", self.b);
-            }
-            if self.a_content {
-                println!("{}", self.a);
-            }
-        } else {
-            if self.a_content {
-                println!("{}", self.a);
-            }
-            if !self.only_display_a && self.b_content {
-                println!("{}", self.b);
-            }
+        if self.a_content {
+            println!("{}", self.a);
+        }
+        if !self.only_display_a && self.b_content {
+            println!("{}", self.b);
         }
         if !self.only_display_a && self.marker_content {
             println!("{}", self.marker);

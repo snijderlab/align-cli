@@ -1,4 +1,3 @@
-use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
 use colored::{Colorize, Styles};
 use imgt_germlines::{Allele, GeneType, Selection};
@@ -16,7 +15,6 @@ use std::{collections::HashSet, io::Write, process::exit};
 mod cli;
 mod legend;
 mod render;
-mod stats;
 mod styling;
 
 use cli::*;
@@ -26,35 +24,24 @@ use styling::*;
 fn main() {
     let args = Cli::parse();
     if let (Some(x), Some(y)) = (&args.x, &args.second.y) {
-        if !args.normal {
-            let a = parse_peptide(x);
-            let b = parse_peptide(y);
-            let alignment = rustyms::align::align(
-                a.clone(),
-                b.clone(),
-                rustyms::align::BLOSUM62,
-                args.tolerance,
-                args.alignment_type.ty(),
-            );
-            show_annotated_mass_alignment(
-                &alignment,
-                args.tolerance,
-                None,
-                args.line_width,
-                args.context,
-                false,
-            );
-        } else if x.contains(',') {
-            for (x, y) in x.split(',').zip(y.split(',')) {
-                align(&args, x.as_bytes(), y.as_bytes());
-            }
-        } else {
-            align(&args, x.as_bytes(), y.as_bytes());
-        }
+        let a = parse_peptide(x);
+        let b = parse_peptide(y);
+        let alignment = align(
+            a.clone(),
+            b.clone(),
+            args.tolerance,
+            args.alignment_type.ty(),
+            args.normal,
+        );
+        show_annotated_mass_alignment(
+            &alignment,
+            args.tolerance,
+            None,
+            args.line_width,
+            args.context,
+            false,
+        );
     } else if let (Some(x), Some(path)) = (&args.x, &args.second.file) {
-        if args.normal {
-            panic!("Can only do the peptide to database matching based on mass")
-        }
         let sequences = rustyms::identifications::FastaData::parse_file(path).unwrap();
         let search_sequence = parse_peptide(x);
         let mut alignments: Vec<_> = sequences
@@ -63,17 +50,17 @@ fn main() {
                 let a = seq.peptide.clone();
                 (
                     seq,
-                    rustyms::align::align(
+                    align(
                         a,
                         search_sequence.clone(),
-                        rustyms::align::BLOSUM62,
                         args.tolerance,
                         args.alignment_type.ty(),
+                        args.normal,
                     ),
                 )
             })
             .collect();
-        alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
+        alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
             "Rank".to_string(),
@@ -123,7 +110,6 @@ fn main() {
             false,
         );
     } else if let (Some(x), Some(IMGTSelection::Search(selection))) = (&args.x, &args.second.imgt) {
-        assert!(!args.normal, "Cannot use IMGT with normal alignment");
         let seq_b = parse_peptide(x);
         let mut alignments: Vec<_> = selection
             .par_germlines()
@@ -131,17 +117,17 @@ fn main() {
                 let a = seq.sequence.clone();
                 (
                     seq,
-                    rustyms::align::align(
+                    align(
                         a,
                         seq_b.clone(),
-                        rustyms::align::BLOSUM62,
                         args.tolerance,
                         args.alignment_type.ty(),
+                        args.normal,
                     ),
                 )
             })
             .collect();
-        alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
+        alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
             "Rank".to_string(),
@@ -197,7 +183,6 @@ fn main() {
     } else if let (Some(x), Some(IMGTSelection::Domain(species, chains, allele))) =
         (&args.x, &args.second.imgt)
     {
-        assert!(!args.normal, "Cannot use IMGT with normal alignment");
         let seq_b = parse_peptide(x);
         let v_selection = Selection {
             species: species.clone(),
@@ -212,17 +197,17 @@ fn main() {
                 let a = seq.sequence.clone();
                 (
                     seq,
-                    rustyms::align::align(
-                        seq_b.clone(),
+                    align(
                         a,
-                        rustyms::align::BLOSUM62,
+                        seq_b.clone(),
                         args.tolerance,
-                        Type::GlobalForB,
+                        Type::GlobalForA,
+                        args.normal,
                     ),
                 )
             })
             .collect();
-        v_alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
+        v_alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let selected: Vec<_> = v_alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
             "Rank".to_string(),
@@ -267,42 +252,34 @@ fn main() {
             genes: Some(HashSet::from([GeneType::J])),
             allele: allele.clone(),
         };
-        let v_length = selected[0].1.start_b + selected[0].1.len_b();
+        let v_length = selected[0].1.start_a + selected[0].1.len_a();
         let mut j_alignments: Vec<_> = j_selection
             .par_germlines()
             .map(|seq| {
                 let a = seq.sequence.clone();
                 (
                     seq,
-                    rustyms::align::align(
-                        seq_b.clone().sequence.into_iter().skip(v_length).into(),
+                    align(
                         a,
-                        rustyms::align::BLOSUM62,
+                        seq_b.clone().sequence.into_iter().skip(v_length).into(),
                         args.tolerance,
-                        Type::GlobalForB,
+                        Type::GlobalForA,
+                        args.normal,
                     ),
                 )
             })
             .collect();
-        j_alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
+        j_alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let j_alignment = j_alignments.first().unwrap();
         println!(
-            "{} {} {}",
-            "Alignment for the best match".underline().italic(),
+            "{} {}",
+            "Alignment for the best V gene match".underline().italic(),
             selected[0].0.species.scientific_name().dimmed(),
-            format!(
-                "{} / {} + {} / {}",
-                selected[0].0.name(),
-                selected[0].0.fancy_name(),
-                j_alignment.0.name(),
-                j_alignment.0.fancy_name()
-            )
-            .dimmed(),
         );
         let v_alignment = Alignment {
-            seq_a: selected[0]
+            seq_b: selected[0]
                 .1
-                .seq_a
+                .seq_b
                 .sequence
                 .iter()
                 .take(v_length + 1)
@@ -321,12 +298,12 @@ fn main() {
         (&args.x, &args.second.imgt)
     {
         if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
-            let alignment = rustyms::align::align(
+            let alignment = align(
                 allele.sequence.clone(),
                 parse_peptide(x),
-                rustyms::align::BLOSUM62,
                 args.tolerance,
                 args.alignment_type.ty(),
+                args.normal,
             );
             println!(
                 "Selected: {} {}",
@@ -378,42 +355,6 @@ fn parse_peptide(input: &str) -> LinearPeptide {
             exit(1);
         }
     }
-}
-
-fn align(args: &Cli, x: &[u8], y: &[u8]) {
-    let scoring = get_blosum62(-12, -1);
-    let mut aligner = Aligner::with_capacity_and_scoring(x.len(), y.len(), scoring);
-    let alignment = if args.alignment_type.local {
-        aligner.local(x, y)
-    } else if args.alignment_type.semi_global {
-        aligner.semiglobal(x, y)
-    } else {
-        aligner.global(x, y)
-    };
-    show_alignment(
-        &alignment,
-        x,
-        y,
-        args.alignment_type.semi_global,
-        args.line_width,
-    );
-}
-
-pub fn get_blosum62(gap_open: i32, gap_extend: i32) -> Scoring<impl Fn(u8, u8) -> i32> {
-    const TRANSLATION_TABLE: &[usize] = include!("translation_table.txt");
-    const BLOSUM62: &[&[i32]] = include!("blosum62.txt");
-    let match_fn = |a: u8, b: u8| {
-        BLOSUM62[if a > 64 && a < 91 {
-            TRANSLATION_TABLE[(a - 65) as usize]
-        } else {
-            23 // Align as .
-        }][if b > 64 && b < 91 {
-            TRANSLATION_TABLE[(b - 65) as usize]
-        } else {
-            23 // Align as .
-        }]
-    };
-    Scoring::new(gap_open, gap_extend, match_fn)
 }
 
 fn single_stats(args: &Cli, seq: LinearPeptide) {
@@ -616,4 +557,18 @@ fn display_germline(allele: Allele, args: &Cli) {
         args.context,
         true,
     );
+}
+
+fn align(
+    seq_a: LinearPeptide,
+    seq_b: LinearPeptide,
+    tolerance: MassTolerance,
+    ty: Type,
+    normal: bool,
+) -> Alignment {
+    if normal {
+        rustyms::align::align::<1>(seq_a, seq_b, rustyms::align::BLOSUM62, tolerance, ty)
+    } else {
+        rustyms::align::align::<4>(seq_a, seq_b, rustyms::align::BLOSUM62, tolerance, ty)
+    }
 }

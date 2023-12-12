@@ -15,13 +15,15 @@ use std::{collections::HashSet, fmt::Display};
 
 2) Align a single peptide to the IMGT database, `align <X> --imgt <SELECTION>` in this way you can select either a specific germline or a search across the whole database.
 
-3) Align a single peptide to a database `align <X> --file <FILE.fasta>`, this shows the scores for the best matches for this peptide alongside the alignment for the best match.
+3) Do an alignment of a single peptide/sequence against the V domain from IMGT, `align <X> --imgt 'domain&<SELECTION>'` in this way it will find the best match for the V gene and subsequently find the best match on the J gene for the same species, the behaviour is akin to IMGT DomainGapAlign.
 
-4) Get information about a single sequence `align <sequence>`, this shows many basic properties (like mass) and generates isobaric sequences to this sequence.
+4) Align a single peptide to a database `align <X> --file <FILE.fasta>`, this shows the scores for the best matches for this peptide alongside the alignment for the best match.
 
-5) Get information about a single modification, `align --modification <MODIFICATION>`, this shows basic properties, and if it is a mass shift, eg `+58.01`, it shows all modifications that have the same mass within the tolerance.
+5) Get information about a single sequence `align <sequence>`, this shows many basic properties (like mass) and generates isobaric sequences to this sequence.
 
-6) Get the sequence of one or more germlines `align --imgt <SELECTION>`.")]
+6) Get information about a single modification, `align --modification <MODIFICATION>`, this shows basic properties, and if it is a mass shift, eg `+58.01`, it shows all modifications that have the same mass within the tolerance.
+
+7) Get the sequence of one or more germlines `align --imgt <SELECTION>`.")]
 pub struct Cli {
     /// First sequence
     #[arg()]
@@ -106,6 +108,11 @@ pub struct AlignmentType {
     #[arg(short, long)]
     pub semi_global: bool,
 
+    /// Use semi-global alignment, meaning that the first sequence has to match fully, while the second sequence can be longer then the alignment.
+    /// When the `--file` or `--imgt` mode is used this flag indicates that the database sequences can align semi globally to the provided sequence.
+    #[arg(short='S', long)]
+    pub semi_global_a: bool,
+
     /// Use local alignment
     #[arg(short, long)]
     pub local: bool,
@@ -117,6 +124,8 @@ impl AlignmentType {
             rustyms::align::Type::Local
         } else if self.semi_global {
             rustyms::align::Type::GlobalForB
+        } else if self.semi_global_a {
+            rustyms::align::Type::GlobalForA
         } else {
             rustyms::align::Type::Global
         }
