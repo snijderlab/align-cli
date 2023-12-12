@@ -1,6 +1,6 @@
 use bio::alignment::{Alignment, AlignmentOperation};
 use colored::{Color, Colorize, Styles};
-use imgt_germlines::Allele;
+use imgt_germlines::{Allele, Region};
 use rustyms::{align::MatchType, MassTolerance};
 use std::fmt::Write;
 
@@ -122,6 +122,15 @@ pub fn show_alignment(
     println!("{}", lines.2);
 }
 
+#[derive(PartialEq, Eq)]
+enum StepType {
+    Insertion,
+    Deletion,
+    Match,
+    Mismatch,
+    Special,
+}
+
 pub fn show_annotated_mass_alignment(
     alignment: &rustyms::align::Alignment,
     tolerance: MassTolerance,
@@ -130,47 +139,54 @@ pub fn show_annotated_mass_alignment(
     context: bool,
     only_display_a: bool,
 ) {
-    let (identical, similar, gap, length) = alignment.stats();
     if !only_display_a {
-        println!(
-            "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nStart A: {}, Start B: {}, Path: {}\n",
-            format!("{:.3}", identical as f64 / length as f64).bright_blue(),
-            format!("({}/{})", identical, length).dimmed(),
-            format!("{:.3}", similar as f64 / length as f64).blue(),
-            format!("({}/{})", similar, length).dimmed(),
-            format!("{:.3}", gap as f64 / length as f64).cyan(),
-            format!("({}/{})", gap, length).dimmed(),
-            format!("{}", alignment.absolute_score).green(),
-            format!("{:.3}", alignment.normalised_score).green(),
-            alignment
-                .mass_difference()
-                .map_or("??".to_string(), |m| format!("{:.2}", m.value))
-                .yellow(),
-            alignment
-                .ppm()
-                .map_or("??".to_string(), |m| format!("{:.2}", m))
-                .yellow(),
-            format!("Tolerance: {}", tolerance).dimmed(),
-            alignment.start_a.to_string().magenta(),
-            alignment.start_b.to_string().magenta(),
-            alignment.short().dimmed(),
-        );
+        show_alignment_header(alignment, tolerance);
     }
+    let mut writer = CombinedLines::new(line_width, only_display_a, false);
+    show_alignment_inner(&mut writer, alignment, imgt, context, 0, None);
+    writer.flush();
+}
 
+pub fn show_chained_annotated_mass_alignment(
+    alignment1: &(&Allele, rustyms::align::Alignment),
+    alignment2: &(Allele, rustyms::align::Alignment),
+    tolerance: MassTolerance,
+    line_width: usize,
+    context: bool,
+) {
+    show_alignment_header(&alignment1.1, tolerance);
+    show_alignment_header(&alignment2.1, tolerance);
+    let mut writer = CombinedLines::new(line_width, false, true);
+    show_alignment_inner(
+        &mut writer,
+        &alignment1.1,
+        Some(alignment1.0),
+        context,
+        0,
+        None,
+    );
+    show_alignment_inner(
+        &mut writer,
+        &alignment2.1,
+        Some(&alignment2.0),
+        context,
+        alignment1.1.start_b + alignment1.1.len_b(),
+        Some(Region::CDR3),
+    );
+    writer.flush();
+}
+
+fn show_alignment_inner(
+    writer: &mut CombinedLines,
+    alignment: &rustyms::align::Alignment,
+    imgt: Option<&Allele>,
+    context: bool,
+    start_number: usize,
+    start_context_override: Option<Region>,
+) {
     let mut a = alignment.start_a;
     let mut b = alignment.start_b;
-
-    #[derive(PartialEq, Eq)]
-    enum StepType {
-        Insertion,
-        Deletion,
-        Match,
-        Mismatch,
-        Special,
-    }
-
     const NUMBER_GAP: usize = 10;
-    let mut writer = CombinedLines::new(line_width, only_display_a);
     let mut number_shift_back = 1;
     let mut number_tail = String::new();
     let mut is_number = false;
@@ -202,8 +218,8 @@ pub fn show_annotated_mass_alignment(
                 is_number = false;
             }
         }
-        if (a + number_shift_back) % NUMBER_GAP == 0 && number_tail.is_empty() {
-            number_tail = (a + number_shift_back).to_string();
+        if (start_number + a + number_shift_back) % NUMBER_GAP == 0 && number_tail.is_empty() {
+            number_tail = (start_number + a + number_shift_back).to_string();
             number_tail = format!(
                 "{}{number_tail}",
                 " ".repeat(full_width.saturating_sub(number_tail.len() - 1))
@@ -211,12 +227,14 @@ pub fn show_annotated_mass_alignment(
             .chars()
             .rev()
             .collect();
-            number_shift_back = (a + NUMBER_GAP + number_shift_back).to_string().len();
+            number_shift_back = (start_number + a + NUMBER_GAP + number_shift_back)
+                .to_string()
+                .len();
             is_number = true;
         }
         (number_tail, is_number, number_shift_back)
     };
-    if context {
+    if context || start_context_override.is_some() {
         let prefix = alignment.start_a.max(alignment.start_b);
         let shift_a = prefix - alignment.start_a;
         let shift_b = prefix - alignment.start_b;
@@ -235,9 +253,9 @@ pub fn show_annotated_mass_alignment(
             );
 
             writer.add_column(
+                start_context_override.and_then(|r| r.fg_color()),
                 None,
-                None,
-                None,
+                start_context_override.and_then(|r| r.bg_color()),
                 (
                     number_tail.pop().unwrap_or(' '),
                     Styling::with_style(Styles::Dimmed),
@@ -432,9 +450,33 @@ pub fn show_annotated_mass_alignment(
             );
         }
     }
+}
 
-    // Print any tail
-    writer.flush()
+pub fn show_alignment_header(alignment: &rustyms::align::Alignment, tolerance: MassTolerance) {
+    let (identical, similar, gap, length) = alignment.stats();
+    println!(
+        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nStart A: {}, Start B: {}, Path: {}\n",
+        format!("{:.3}", identical as f64 / length as f64).bright_blue(),
+        format!("({}/{})", identical, length).dimmed(),
+        format!("{:.3}", similar as f64 / length as f64).blue(),
+        format!("({}/{})", similar, length).dimmed(),
+        format!("{:.3}", gap as f64 / length as f64).cyan(),
+        format!("({}/{})", gap, length).dimmed(),
+        format!("{}", alignment.absolute_score).green(),
+        format!("{:.3}", alignment.normalised_score).green(),
+        alignment
+            .mass_difference()
+            .map_or("??".to_string(), |m| format!("{:.2}", m.value))
+            .yellow(),
+        alignment
+            .ppm()
+            .map_or("??".to_string(), |m| format!("{:.2}", m))
+            .yellow(),
+        format!("Tolerance: {}", tolerance).dimmed(),
+        alignment.start_a.to_string().magenta(),
+        alignment.start_b.to_string().magenta(),
+        alignment.short().dimmed(),
+    );
 }
 
 struct CombinedLines {
@@ -448,10 +490,11 @@ struct CombinedLines {
     chars: usize,
     line_width: usize,
     only_display_a: bool,
+    flip: bool,
 }
 
 impl CombinedLines {
-    fn new(line_width: usize, only_display_a: bool) -> Self {
+    fn new(line_width: usize, only_display_a: bool, flip: bool) -> Self {
         Self {
             numbers: String::with_capacity(line_width),
             a: String::with_capacity(line_width),
@@ -463,6 +506,7 @@ impl CombinedLines {
             chars: 0,
             line_width,
             only_display_a,
+            flip,
         }
     }
 
@@ -520,11 +564,20 @@ impl CombinedLines {
     fn flush(&mut self) {
         // Only print a line if is has content
         println!("{}", self.numbers);
-        if self.a_content {
-            println!("{}", self.a);
-        }
-        if !self.only_display_a && self.b_content {
-            println!("{}", self.b);
+        if self.flip {
+            if !self.only_display_a && self.b_content {
+                println!("{}", self.b);
+            }
+            if self.a_content {
+                println!("{}", self.a);
+            }
+        } else {
+            if self.a_content {
+                println!("{}", self.a);
+            }
+            if !self.only_display_a && self.b_content {
+                println!("{}", self.b);
+            }
         }
         if !self.only_display_a && self.marker_content {
             println!("{}", self.marker);

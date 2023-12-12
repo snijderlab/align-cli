@@ -86,10 +86,6 @@ pub struct Cli {
     /// A modification you want details on, if it is a mass shift modification eg `+58.01` it will show all predefined modifications that are within the tolerance of this mass
     #[arg(short, long, value_parser=modification_parse, allow_hyphen_values=true)]
     pub modification: Option<Modification>,
-
-    /// To turn on fancy display of germlines and compositions
-    #[arg(long)]
-    pub fancy: bool,
 }
 
 #[test]
@@ -151,6 +147,7 @@ pub struct SecondSelection {
 #[derive(Debug, Clone)]
 pub enum IMGTSelection {
     Gene(Species, Gene, Option<usize>),
+    Domain(Option<HashSet<Species>>, Option<HashSet<ChainType>>, AlleleSelection),
     Search(Selection),
 }
 
@@ -190,7 +187,7 @@ fn imgt_selection_parse(s: &str) -> Result<IMGTSelection, String> {
         .transpose()?;
     let name = s.split('&')
         .find_map(|p| p.strip_prefix("name:"))
-        .or(s.split('&').find(|p| p.starts_with("IG")));
+        .or(s.split('&').find(|p| p.starts_with("IG") || p.starts_with("Ig")));
 
     if let Some(name) = name {
         let species = species
@@ -226,12 +223,16 @@ fn imgt_selection_parse(s: &str) -> Result<IMGTSelection, String> {
             })
             .transpose()?
             .unwrap_or(AlleleSelection::First);
-        Ok(IMGTSelection::Search(Selection {
-            species,
-            chains,
-            genes,
-            allele,
-        }))
+        if s.split('&').any(|s| s == "domain") {
+            Ok(IMGTSelection::Domain(species, chains, allele))
+        } else {
+            Ok(IMGTSelection::Search(Selection {
+                species,
+                chains,
+                genes,
+                allele,
+            }))
+        }
     }
 }
 

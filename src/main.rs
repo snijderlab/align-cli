@@ -1,17 +1,17 @@
 use bio::alignment::pairwise::{Aligner, Scoring};
 use clap::Parser;
 use colored::{Colorize, Styles};
-use imgt_germlines::Allele;
+use imgt_germlines::{Allele, GeneType, Selection};
 use rayon::prelude::*;
 use rustyms::{
-    align::{Alignment, MatchType, Piece},
+    align::{Alignment, MatchType, Piece, Type},
     find_isobaric_sets,
     modification::GnoComposition,
     ontologies::*,
     placement_rule::*,
     AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification,
 };
-use std::{io::Write, process::exit};
+use std::{collections::HashSet, io::Write, process::exit};
 
 mod cli;
 mod legend;
@@ -158,11 +158,7 @@ fn main() {
             data.push([
                 (rank + 1).to_string(),
                 imgt.species.scientific_name().to_string(),
-                if args.fancy {
-                    imgt.fancy_name()
-                } else {
-                    imgt.name()
-                },
+                format!("{} / {}", imgt.name(), imgt.fancy_name()),
                 alignment.absolute_score.to_string(),
                 format!("{:.3}", alignment.normalised_score),
                 format!("{:.3}", stats.0 as f64 / stats.3 as f64),
@@ -188,11 +184,7 @@ fn main() {
             "{} ({} {})",
             "Alignment for the best match".underline().italic(),
             selected[0].0.species.scientific_name().dimmed(),
-            if args.fancy {
-                selected[0].0.fancy_name().dimmed()
-            } else {
-                selected[0].0.name().dimmed()
-            },
+            format!("{} / {}", selected[0].0.name(), selected[0].0.fancy_name()).dimmed(),
         );
         show_annotated_mass_alignment(
             &selected[0].1,
@@ -201,6 +193,129 @@ fn main() {
             args.line_width,
             args.context,
             false,
+        );
+    } else if let (Some(x), Some(IMGTSelection::Domain(species, chains, allele))) =
+        (&args.x, &args.second.imgt)
+    {
+        assert!(!args.normal, "Cannot use IMGT with normal alignment");
+        let seq_b = parse_peptide(x);
+        let v_selection = Selection {
+            species: species.clone(),
+            chains: chains.clone(),
+            genes: Some(HashSet::from([GeneType::V])),
+            allele: allele.clone(),
+        };
+
+        let mut v_alignments: Vec<_> = v_selection
+            .par_germlines()
+            .map(|seq| {
+                let a = seq.sequence.clone();
+                (
+                    seq,
+                    rustyms::align::align(
+                        seq_b.clone(),
+                        a,
+                        rustyms::align::BLOSUM62,
+                        args.tolerance,
+                        Type::GlobalForB,
+                    ),
+                )
+            })
+            .collect();
+        v_alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
+        let selected: Vec<_> = v_alignments.into_iter().take(args.number_of_hits).collect();
+        let mut data = vec![[
+            "Rank".to_string(),
+            "Species".to_string(),
+            "IMGT Name".to_string(),
+            "Score".to_string(),
+            "Normalised score".to_string(),
+            "Identity".to_string(),
+            "Similarity".to_string(),
+            "Gap".to_string(),
+        ]];
+        for (rank, (imgt, alignment)) in selected.iter().enumerate() {
+            let stats = alignment.stats();
+            data.push([
+                (rank + 1).to_string(),
+                imgt.species.scientific_name().to_string(),
+                format!("{} / {}", imgt.name(), imgt.fancy_name()),
+                alignment.absolute_score.to_string(),
+                format!("{:.3}", alignment.normalised_score),
+                format!("{:.3}", stats.0 as f64 / stats.3 as f64),
+                format!("{:.3}", stats.1 as f64 / stats.3 as f64),
+                format!("{:.3}", stats.2 as f64 / stats.3 as f64),
+            ]);
+        }
+        table(
+            &data,
+            true,
+            &[
+                Styling::with_style(Styles::Dimmed),
+                Styling::none(),
+                Styling::none(),
+                Styling::none(),
+                Styling::none(),
+                Styling::none(),
+                Styling::none(),
+                Styling::none(),
+            ],
+        );
+        let j_selection = Selection {
+            species: Some(HashSet::from([selected[0].0.species])),
+            chains: chains.clone(),
+            genes: Some(HashSet::from([GeneType::J])),
+            allele: allele.clone(),
+        };
+        let v_length = selected[0].1.start_b + selected[0].1.len_b();
+        let mut j_alignments: Vec<_> = j_selection
+            .par_germlines()
+            .map(|seq| {
+                let a = seq.sequence.clone();
+                (
+                    seq,
+                    rustyms::align::align(
+                        seq_b.clone().sequence.into_iter().skip(v_length).into(),
+                        a,
+                        rustyms::align::BLOSUM62,
+                        args.tolerance,
+                        Type::GlobalForB,
+                    ),
+                )
+            })
+            .collect();
+        j_alignments.sort_unstable_by_key(|a| -a.1.absolute_score);
+        let j_alignment = j_alignments.first().unwrap();
+        println!(
+            "{} {} {}",
+            "Alignment for the best match".underline().italic(),
+            selected[0].0.species.scientific_name().dimmed(),
+            format!(
+                "{} / {} + {} / {}",
+                selected[0].0.name(),
+                selected[0].0.fancy_name(),
+                j_alignment.0.name(),
+                j_alignment.0.fancy_name()
+            )
+            .dimmed(),
+        );
+        let v_alignment = Alignment {
+            seq_a: selected[0]
+                .1
+                .seq_a
+                .sequence
+                .iter()
+                .take(v_length + 1)
+                .cloned()
+                .into(),
+            ..selected[0].1.clone()
+        };
+        show_chained_annotated_mass_alignment(
+            &(&selected[0].0, v_alignment),
+            j_alignment,
+            args.tolerance,
+            args.line_width,
+            args.context,
         );
     } else if let (Some(x), Some(IMGTSelection::Gene(species, gene, allele))) =
         (&args.x, &args.second.imgt)
@@ -216,11 +331,7 @@ fn main() {
             println!(
                 "Selected: {} {}",
                 allele.species.scientific_name().to_string().purple(),
-                if args.fancy {
-                    allele.fancy_name().purple()
-                } else {
-                    allele.name().purple()
-                }
+                format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
             );
             show_annotated_mass_alignment(
                 &alignment,
@@ -236,7 +347,7 @@ fn main() {
     } else if let Some(x) = &args.x {
         single_stats(&args, parse_peptide(x))
     } else if let Some(modification) = &args.modification {
-        modification_stats(&args, modification, args.tolerance);
+        modification_stats(modification, args.tolerance);
     } else if let Some(IMGTSelection::Gene(species, gene, allele)) = &args.second.imgt {
         if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
             display_germline(allele, &args);
@@ -325,11 +436,7 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
         );
         println!(
             "Composition: {} {}",
-            if args.fancy {
-                seq.bare_formula().unwrap().hill_notation_fancy().green()
-            } else {
-                seq.bare_formula().unwrap().hill_notation().green()
-            },
+            seq.bare_formula().unwrap().hill_notation_fancy().green(),
             "(no N/C terminal taken into account)".dimmed(),
         );
         if !matches!(args.isobaric, IsobaricNumber::Limited(0)) {
@@ -383,7 +490,7 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
     }
 }
 
-fn modification_stats(args: &Cli, modification: &Modification, tolerance: MassTolerance) {
+fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
     if let Modification::Mass(mass) = modification {
         println!(
             "All ontology modifications close to the given monoisotopic mass: {}",
@@ -403,11 +510,7 @@ fn modification_stats(args: &Cli, modification: &Modification, tolerance: MassTo
                         modification.formula().monoisotopic_mass().unwrap().value
                     )
                     .blue(),
-                    if args.fancy {
-                        modification.formula().hill_notation_fancy().green()
-                    } else {
-                        modification.formula().hill_notation().green()
-                    },
+                    modification.formula().hill_notation_fancy().green(),
                 );
             }
         }
@@ -424,11 +527,7 @@ fn modification_stats(args: &Cli, modification: &Modification, tolerance: MassTo
         );
         println!(
             "Composition: {}",
-            if args.fancy {
-                modification.formula().hill_notation_fancy().green()
-            } else {
-                modification.formula().hill_notation().green()
-            },
+            modification.formula().hill_notation_fancy().green(),
         );
         if let Modification::Predefined(_, rules, ontology, name, index) = modification {
             println!(
@@ -507,11 +606,7 @@ fn display_germline(allele: Allele, args: &Cli) {
         "{} ({}) {}",
         allele.species.scientific_name().to_string().purple(),
         allele.species.common_name(),
-        if args.fancy {
-            allele.fancy_name().purple()
-        } else {
-            allele.name().purple()
-        },
+        format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
     );
     show_annotated_mass_alignment(
         &alignment,
