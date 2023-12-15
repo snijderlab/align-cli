@@ -1,5 +1,5 @@
 use clap::Parser;
-use colored::{Colorize, Styles};
+use colored::{Color, Colorize, Styles};
 use imgt_germlines::{Allele, GeneType, Selection};
 use rayon::prelude::*;
 use rustyms::{
@@ -64,8 +64,8 @@ fn main() {
         alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
-            "Rank".to_string(),
-            "Database id".to_string(),
+            String::new(),
+            "Id".to_string(),
             "Score".to_string(),
             "Normalised score".to_string(),
             "Identity".to_string(),
@@ -91,7 +91,7 @@ fn main() {
                 Styling::with_style(Styles::Dimmed),
                 Styling::none(),
                 Styling::none(),
-                Styling::none(),
+                Styling::with_fg(Some(Color::Green)),
                 Styling::none(),
                 Styling::none(),
                 Styling::none(),
@@ -132,9 +132,10 @@ fn main() {
         alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
-            "Rank".to_string(),
+            String::new(),
             "Species".to_string(),
-            "IMGT Name".to_string(),
+            "IMGT name".to_string(),
+            "Alternative name".to_string(),
             "Score".to_string(),
             "Normalised score".to_string(),
             "Identity".to_string(),
@@ -146,7 +147,8 @@ fn main() {
             data.push([
                 (rank + 1).to_string(),
                 imgt.species.scientific_name().to_string(),
-                format!("{} / {}", imgt.name(), imgt.fancy_name()),
+                imgt.name(),
+                imgt.fancy_name(),
                 alignment.absolute_score.to_string(),
                 format!("{:.3}", alignment.normalised_score),
                 format!("{:.3}", stats.0 as f64 / stats.3 as f64),
@@ -161,8 +163,9 @@ fn main() {
                 Styling::with_style(Styles::Dimmed),
                 Styling::none(),
                 Styling::none(),
+                Styling::with_style(Styles::Dimmed),
                 Styling::none(),
-                Styling::none(),
+                Styling::with_fg(Some(Color::Green)),
                 Styling::none(),
                 Styling::none(),
                 Styling::none(),
@@ -213,9 +216,10 @@ fn main() {
         v_alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let selected: Vec<_> = v_alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
-            "Rank".to_string(),
+            String::new(),
             "Species".to_string(),
-            "IMGT Name".to_string(),
+            "IMGT name".to_string(),
+            "Alternative name".to_string(),
             "Score".to_string(),
             "Normalised score".to_string(),
             "Identity".to_string(),
@@ -227,7 +231,8 @@ fn main() {
             data.push([
                 (rank + 1).to_string(),
                 imgt.species.scientific_name().to_string(),
-                format!("{} / {}", imgt.name(), imgt.fancy_name()),
+                imgt.name(),
+                imgt.fancy_name(),
                 alignment.absolute_score.to_string(),
                 format!("{:.3}", alignment.normalised_score),
                 format!("{:.3}", stats.0 as f64 / stats.3 as f64),
@@ -242,8 +247,9 @@ fn main() {
                 Styling::with_style(Styles::Dimmed),
                 Styling::none(),
                 Styling::none(),
+                Styling::with_style(Styles::Dimmed),
                 Styling::none(),
-                Styling::none(),
+                Styling::with_fg(Some(Color::Green)),
                 Styling::none(),
                 Styling::none(),
                 Styling::none(),

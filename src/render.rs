@@ -558,7 +558,7 @@ impl CombinedLines {
 pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styling; N]) {
     let sizes = data.iter().fold([0; N], |mut sizes, row| {
         for i in 0..N {
-            sizes[i] = sizes[i].max(row[i].len());
+            sizes[i] = sizes[i].max(row[i].chars().count());
         }
         sizes
     });
@@ -574,7 +574,7 @@ pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styl
         print!("│");
         #[allow(clippy::needless_range_loop)]
         for i in 0..N {
-            print!("{:w$}│", data[0][i].blue(), w = sizes[i]);
+            print!("{:^w$}│", data[0][i].blue(), w = sizes[i]);
         }
         println!();
         line("├", "┼", "┤");
