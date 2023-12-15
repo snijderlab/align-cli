@@ -1,6 +1,9 @@
 use colored::{Color, Colorize, Styles};
 use imgt_germlines::{Allele, Region};
+use itertools::Itertools;
 use rustyms::{align::MatchType, MassTolerance};
+use std::collections::HashSet;
+use std::fmt::Display;
 use std::fmt::Write;
 
 use crate::legend::*;
@@ -22,11 +25,15 @@ pub fn show_annotated_mass_alignment(
     line_width: usize,
     context: bool,
     only_display_a: bool,
+    line_names: (
+        impl Into<String> + Display + Clone,
+        impl Into<String> + Display + Clone,
+    ),
 ) {
     if !only_display_a {
-        show_alignment_header(alignment, tolerance);
+        show_alignment_header(alignment, tolerance, line_names.clone(), None);
     }
-    let mut writer = CombinedLines::new(line_width, only_display_a);
+    let mut writer = CombinedLines::new(line_width, only_display_a, line_names.1);
     show_alignment_inner(
         &mut writer,
         alignment,
@@ -35,6 +42,7 @@ pub fn show_annotated_mass_alignment(
         None,
         false,
         String::new(),
+        line_names.0.into(),
     );
     writer.flush();
 }
@@ -51,14 +59,25 @@ pub fn show_chained_annotated_mass_alignment(
         "V gene".blue(),
         format!("{} / {}", alignment1.0.name(), alignment1.0.fancy_name(),).purple(),
     );
-    show_alignment_header(&alignment1.1, tolerance);
+    show_alignment_header(
+        &alignment1.1,
+        tolerance,
+        (alignment1.0.name(), "Query"),
+        None,
+    );
     println!(
         "{}: {}",
         "J gene".blue(),
         format!("{} / {}", alignment2.0.name(), alignment2.0.fancy_name(),).purple(),
     );
-    show_alignment_header(&alignment2.1, tolerance);
-    let mut writer = CombinedLines::new(line_width, false);
+    show_alignment_header(
+        &alignment2.1,
+        tolerance,
+        (alignment2.0.name(), "Query"),
+        Some(alignment1.1.start_b + alignment1.1.len_b()),
+    );
+
+    let mut writer = CombinedLines::new(line_width, false, "Query");
     let number_tail = show_alignment_inner(
         &mut writer,
         &alignment1.1,
@@ -67,6 +86,7 @@ pub fn show_chained_annotated_mass_alignment(
         None,
         true,
         String::new(),
+        alignment1.0.name(),
     );
     show_alignment_inner(
         &mut writer,
@@ -76,6 +96,7 @@ pub fn show_chained_annotated_mass_alignment(
         Some(Region::CDR3),
         false,
         number_tail,
+        alignment2.0.name(),
     );
     writer.flush();
 }
@@ -88,6 +109,7 @@ fn show_alignment_inner(
     start_context_override: Option<Region>,
     room_on_end: bool,
     number_tail: String,
+    a_name: String,
 ) -> String {
     let mut a = alignment.start_a;
     let mut b = alignment.start_b;
@@ -169,6 +191,7 @@ fn show_alignment_inner(
                 .unwrap_or(Styling::with_style(Styles::Dimmed));
 
             writer.add_column(
+                "",
                 start_context_override.and_then(|r| r.fg_color()),
                 None,
                 start_context_override.and_then(|r| r.bg_color()),
@@ -285,6 +308,7 @@ fn show_alignment_inner(
         // Now write to the buffers one character at a time
         for s in 0..len {
             writer.add_column(
+                &a_name,
                 region.and_then(|r| r.0.fg_color()),
                 colour,
                 region.and_then(|r| r.0.bg_color()),
@@ -338,6 +362,7 @@ fn show_alignment_inner(
             );
 
             writer.add_column(
+                "",
                 None,
                 None,
                 None,
@@ -370,10 +395,15 @@ fn show_alignment_inner(
     number_tail
 }
 
-pub fn show_alignment_header(alignment: &rustyms::align::Alignment, tolerance: MassTolerance) {
+pub fn show_alignment_header(
+    alignment: &rustyms::align::Alignment,
+    tolerance: MassTolerance,
+    names: (impl Display, impl Display),
+    additional_b_start: Option<usize>,
+) {
     let (identical, similar, gap, length) = alignment.stats();
     println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nStart A: {}, Start B: {}, Path: {}\n",
+        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nStart: {} {} {} {}, Path: {}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
         format!("({}/{})", identical, length).dimmed(),
         format!("{:.3}", similar as f64 / length as f64).blue(),
@@ -390,9 +420,11 @@ pub fn show_alignment_header(alignment: &rustyms::align::Alignment, tolerance: M
             .ppm()
             .map_or("??".to_string(), |m| format!("{:.2}", m))
             .yellow(),
-        format!("Tolerance: {}", tolerance).dimmed(),
+        format!("Tolerance: {}, Alignment: {:?}", tolerance, alignment.ty).dimmed(),
+        names.0,
         alignment.start_a.to_string().magenta(),
-        alignment.start_b.to_string().magenta(),
+        names.1,
+        (additional_b_start.unwrap_or_default() + alignment.start_b).to_string().magenta(),
         alignment.short().dimmed(),
     );
 }
@@ -406,12 +438,15 @@ struct CombinedLines {
     marker: String,
     marker_content: bool,
     chars: usize,
+    lines: usize,
     line_width: usize,
     only_display_a: bool,
+    a_names: HashSet<String>,
+    b_name: String,
 }
 
 impl CombinedLines {
-    fn new(line_width: usize, only_display_a: bool) -> Self {
+    fn new(line_width: usize, only_display_a: bool, b_name: impl Into<String>) -> Self {
         Self {
             numbers: String::with_capacity(line_width),
             a: String::with_capacity(line_width),
@@ -421,13 +456,17 @@ impl CombinedLines {
             marker: String::with_capacity(line_width),
             marker_content: false,
             chars: 0,
+            lines: 0,
             line_width,
             only_display_a,
+            a_names: HashSet::new(),
+            b_name: b_name.into(),
         }
     }
 
     fn add_column(
         &mut self,
+        a_name: &str,
         region_colour: Option<Color>,
         type_colour: Option<Color>,
         background_colour: Option<Color>,
@@ -438,6 +477,9 @@ impl CombinedLines {
     ) {
         // Determine the foreground colour for the a/b/marker lines
         let color_fg = region_colour.or(type_colour);
+        if !a_name.is_empty() {
+            self.a_names.insert(a_name.to_string());
+        }
 
         write!(
             &mut self.numbers,
@@ -480,11 +522,21 @@ impl CombinedLines {
     fn flush(&mut self) {
         // Only print a line if is has content
         println!("{}", self.numbers);
+        let padding = if self.lines > 0 {
+            " ".repeat(self.line_width - self.chars)
+        } else {
+            String::new()
+        };
         if self.a_content {
-            println!("{}", self.a);
+            println!(
+                "{}{} {}",
+                self.a,
+                padding,
+                self.a_names.iter().join(" / ").dimmed(),
+            );
         }
         if !self.only_display_a && self.b_content {
-            println!("{}", self.b);
+            println!("{}{} {}", self.b, padding, self.b_name.dimmed(),);
         }
         if !self.only_display_a && self.marker_content {
             println!("{}", self.marker);
@@ -498,6 +550,8 @@ impl CombinedLines {
         self.b_content = false;
         self.marker_content = false;
         self.chars = 0;
+        self.lines += 1;
+        self.a_names.clear();
     }
 }
 

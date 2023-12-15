@@ -23,9 +23,9 @@ use styling::*;
 
 fn main() {
     let args = Cli::parse();
-    if let (Some(x), Some(y)) = (&args.x, &args.second.y) {
-        let a = parse_peptide(x);
-        let b = parse_peptide(y);
+    if let (Some(a), Some(b)) = (&args.a, &args.second.b) {
+        let a = parse_peptide(a);
+        let b = parse_peptide(b);
         let alignment = align(
             a.clone(),
             b.clone(),
@@ -40,10 +40,11 @@ fn main() {
             args.line_width,
             args.context,
             false,
+            ("A", "B"),
         );
-    } else if let (Some(x), Some(path)) = (&args.x, &args.second.file) {
+    } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
         let sequences = rustyms::identifications::FastaData::parse_file(path).unwrap();
-        let search_sequence = parse_peptide(x);
+        let search_sequence = parse_peptide(b);
         let mut alignments: Vec<_> = sequences
             .into_par_iter()
             .map(|seq| {
@@ -108,8 +109,9 @@ fn main() {
             args.line_width,
             args.context,
             false,
+            (&selected[0].0.id, "Query"),
         );
-    } else if let (Some(x), Some(IMGTSelection::Search(selection))) = (&args.x, &args.second.imgt) {
+    } else if let (Some(x), Some(IMGTSelection::Search(selection))) = (&args.a, &args.second.imgt) {
         let seq_b = parse_peptide(x);
         let mut alignments: Vec<_> = selection
             .par_germlines()
@@ -179,9 +181,10 @@ fn main() {
             args.line_width,
             args.context,
             false,
+            (selected[0].0.name(), "Query"),
         );
     } else if let (Some(x), Some(IMGTSelection::Domain(species, chains, allele))) =
-        (&args.x, &args.second.imgt)
+        (&args.a, &args.second.imgt)
     {
         let seq_b = parse_peptide(x);
         let v_selection = Selection {
@@ -294,7 +297,7 @@ fn main() {
             args.context,
         );
     } else if let (Some(x), Some(IMGTSelection::Gene(species, gene, allele))) =
-        (&args.x, &args.second.imgt)
+        (&args.a, &args.second.imgt)
     {
         if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
             let alignment = align(
@@ -316,11 +319,12 @@ fn main() {
                 args.line_width,
                 args.context,
                 false,
+                (allele.name(), "Query"),
             );
         } else {
             println!("Could not find specified germline")
         }
-    } else if let Some(x) = &args.x {
+    } else if let Some(x) = &args.a {
         single_stats(&args, parse_peptide(x))
     } else if let Some(modification) = &args.modification {
         modification_stats(modification, args.tolerance);
@@ -555,6 +559,7 @@ fn display_germline(allele: Allele, args: &Cli) {
         args.line_width,
         args.context,
         true,
+        ("", ""),
     );
 }
 

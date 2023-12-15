@@ -27,7 +27,7 @@ use std::{collections::HashSet, fmt::Display};
 pub struct Cli {
     /// First sequence
     #[arg()]
-    pub x: Option<String>,
+    pub a: Option<String>,
 
     /// The selection of second sequence, can only be one of these
     #[command(flatten)]
@@ -137,7 +137,7 @@ impl AlignmentType {
 pub struct SecondSelection {
     /// Second sequence
     #[arg()]
-    pub y: Option<String>,
+    pub b: Option<String>,
 
     /// A fasta database file to open to align the sequence to, only provide a single sequence for this mode
     #[arg(short, long)]
