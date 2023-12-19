@@ -180,9 +180,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-deque"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce6fd6f855243022dcecf8702fef0c297d4338e226845fe067f6341ad9fa0cef"
+checksum = "fca89a0e215bab21874660c67903c5f143333cab1da83d041c7ded6053774751"
 dependencies = [
  "cfg-if",
  "crossbeam-epoch",
@@ -246,7 +246,7 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 [[package]]
 name = "imgt-germlines"
 version = "0.1.0"
-source = "git+https://github.com/snijderlab/imgt-germlines#cae8e9182d91a5aaf5a9bc686c5fc973f323c819"
+source = "git+https://github.com/snijderlab/imgt-germlines#3d4d354b233be15357b46516ffe74413cc36f3bf"
 dependencies = [
  "bincode",
  "itertools",
@@ -513,7 +513,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "rustyms"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#807e9ace941eda5144f3a60c7a4ba5d972f35445"
+source = "git+https://github.com/snijderlab/rustyms#fbaefae48d8451848e126e378d2ff20068c0002f"
 dependencies = [
  "bincode",
  "flate2",

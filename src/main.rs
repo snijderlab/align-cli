@@ -544,6 +544,7 @@ fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
 fn display_germline(allele: Allele, args: &Cli) {
     let alignment = Alignment {
         absolute_score: 0,
+        maximal_score: 0,
         normalised_score: 0.0,
         path: vec![Piece::new(0, 0, MatchType::FullIdentity, 1, 0); allele.sequence.len()],
         start_a: 0,

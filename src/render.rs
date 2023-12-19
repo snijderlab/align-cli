@@ -2,6 +2,7 @@ use colored::{Color, Colorize, Styles};
 use imgt_germlines::{Allele, Region};
 use itertools::Itertools;
 use rustyms::{align::MatchType, MassTolerance};
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::fmt::Write;
@@ -167,6 +168,7 @@ fn show_alignment_inner(
         }
         (number_tail, is_number, number_shift_back)
     };
+    // Start context
     if context || start_context_override.is_some() {
         let prefix = alignment.start_a.max(alignment.start_b);
         let shift_a = prefix - alignment.start_a;
@@ -191,7 +193,7 @@ fn show_alignment_inner(
                 .unwrap_or(Styling::with_style(Styles::Dimmed));
 
             writer.add_column(
-                "",
+                start_context_override.map(|_| "").unwrap_or(&a_name),
                 start_context_override.and_then(|r| r.fg_color()),
                 None,
                 start_context_override.and_then(|r| r.bg_color()),
@@ -218,7 +220,7 @@ fn show_alignment_inner(
             );
         }
     }
-
+    // Actual alignment / middle
     for (index, step) in alignment.path.iter().enumerate() {
         let ty = match (step.match_type, step.step_a, step.step_b) {
             (MatchType::Isobaric, _, _) => StepType::Special, // Catch any 1/1 isobaric sets before they are counted as Match/Mismatch
@@ -343,6 +345,7 @@ fn show_alignment_inner(
         a += step.step_a as usize;
         b += step.step_b as usize;
     }
+    // End context
     if context {
         let len = (alignment.seq_a.len() - a).max(alignment.seq_b.len() - b);
 
@@ -362,7 +365,7 @@ fn show_alignment_inner(
             );
 
             writer.add_column(
-                "",
+                &a_name,
                 None,
                 None,
                 None,
@@ -403,23 +406,33 @@ pub fn show_alignment_header(
 ) {
     let (identical, similar, gap, length) = alignment.stats();
     println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} (Normalised: {}), Mass difference: {} Da {} ppm, {}\nStart: {} {} {} {}, Path: {}\n",
+        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}, {}\nStart: {} {} {} {}, Path: {}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
         format!("({}/{})", identical, length).dimmed(),
         format!("{:.3}", similar as f64 / length as f64).blue(),
         format!("({}/{})", similar, length).dimmed(),
         format!("{:.3}", gap as f64 / length as f64).cyan(),
         format!("({}/{})", gap, length).dimmed(),
-        format!("{}", alignment.absolute_score).green(),
         format!("{:.3}", alignment.normalised_score).green(),
+        format!("({}/{})", alignment.absolute_score, alignment.maximal_score).dimmed(),
+        if alignment
+        .mass_difference().is_some_and(|d| d.value==0.0) {
+            "Equal mass".yellow().to_string()
+        } else {
+            format!("Mass difference: {}Da {}",
         alignment
             .mass_difference()
-            .map_or("??".to_string(), |m| format!("{:.2}", m.value))
-            .yellow(),
+            .map_or("??".red().to_string(), |m| {
+                let (num, suf) = engineering_notation(m.value, 3);
+                format!("{} {}", num.yellow(), suf.map_or(String::new(), |s| s.to_string()))
+            }),
         alignment
             .ppm()
-            .map_or("??".to_string(), |m| format!("{:.2}", m))
-            .yellow(),
+            .map_or("??".red().to_string(), |m| {
+                let (num, unit) = relative_notation(m, 3);
+                format!("{} {}", num.yellow(), unit)
+            }))
+        },
         format!("Tolerance: {}, Alignment: {:?}", tolerance, alignment.ty).dimmed(),
         names.0,
         alignment.start_a.to_string().magenta(),
@@ -587,4 +600,54 @@ pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styl
         println!();
     }
     line("╰", "┴", "╯");
+}
+
+/// Display the given value in engineering notation eg `1000` -> `10 k`, with the given number of decimal points and returns the suffix separately.
+/// /// A value of `0.0` will result in the lowest possible suffix `0.0 q`.
+fn engineering_notation(value: f64, precision: usize) -> (String, Option<char>) {
+    const BIG_SUFFIXES: &[char] = &[' ', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 'R', 'Q'];
+    const SMALL_SUFFIXES: &[char] = &[' ', 'm', 'μ', 'n', 'p', 'f', 'a', 'z', 'y', 'r', 'q'];
+    let base = if value == 0.0 {
+        0
+    } else {
+        ((value.abs().log10() / 3.0).floor() as isize).clamp(
+            -(SMALL_SUFFIXES.len() as isize - 1),
+            BIG_SUFFIXES.len() as isize - 1,
+        )
+    };
+    match base.cmp(&0) {
+        Ordering::Less => (
+            format!(
+                "{:.precision$}",
+                value * 10_usize.pow(base.unsigned_abs() as u32 * 3) as f64,
+            ),
+            Some(SMALL_SUFFIXES[base.unsigned_abs()]),
+        ),
+        Ordering::Equal => (format!("{value:.precision$}"), None),
+        Ordering::Greater => (
+            format!(
+                "{:.precision$}",
+                value / 10_usize.pow(base as u32 * 3) as f64,
+            ),
+            Some(BIG_SUFFIXES[base as usize]),
+        ),
+    }
+}
+
+/// Display the given relative value in nice notation eg `1000 ppm` -> `10 ‰`, with the given number of decimal points and returns the suffix separately.
+/// A value of `0.0` will result in the lowest possible suffix `0.0 ppq`.
+fn relative_notation(ppm: f64, precision: usize) -> (String, &'static str) {
+    if ppm >= 1.0e6 {
+        (format!("{:.precision$}", ppm * 1e-6), "⅟")
+    } else if ppm >= 1.0e3 {
+        (format!("{:.precision$}", ppm * 1e-3), "‰")
+    } else if ppm <= 1.0e-6 {
+        (format!("{:.precision$}", ppm * 1e9), "ppq")
+    } else if ppm <= 1.0e-3 {
+        (format!("{:.precision$}", ppm * 1e6), "ppt")
+    } else if ppm <= 1.0 {
+        (format!("{:.precision$}", ppm * 1e3), "ppb")
+    } else {
+        (format!("{:.precision$}", ppm), "ppm")
+    }
 }
