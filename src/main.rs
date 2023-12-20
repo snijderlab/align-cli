@@ -207,7 +207,7 @@ fn main() {
                         a,
                         seq_b.clone(),
                         args.tolerance,
-                        Type::GlobalForA,
+                        Type::GLOBAL_A,
                         args.normal,
                     ),
                 )
@@ -272,7 +272,7 @@ fn main() {
                         a,
                         seq_b.clone().sequence.into_iter().skip(v_length).into(),
                         args.tolerance,
-                        Type::GlobalForA,
+                        Type::GLOBAL_A,
                         args.normal,
                     ),
                 )
@@ -551,7 +551,7 @@ fn display_germline(allele: Allele, args: &Cli) {
         start_b: 0,
         seq_a: allele.sequence.clone(),
         seq_b: LinearPeptide::default(),
-        ty: rustyms::align::Type::Global,
+        ty: rustyms::align::Type::GLOBAL,
     };
     println!(
         "{} ({}) {}",

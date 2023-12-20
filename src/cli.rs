@@ -3,7 +3,7 @@ use imgt_germlines::{AlleleSelection, Gene, GeneType, ChainType, Selection, Spec
 use rustyms::{
     modification::ReturnModification,
     placement_rule::*,
-    AminoAcid,  ComplexPeptide, LinearPeptide, MassTolerance, Modification,
+    AminoAcid,  ComplexPeptide, LinearPeptide, MassTolerance, Modification, align::Type,
 };
 use std::{collections::HashSet, fmt::Display};
 
@@ -116,18 +116,25 @@ pub struct AlignmentType {
     /// Use local alignment
     #[arg(short, long)]
     pub local: bool,
+
+    /// Specify the type fully. Use the full name eg `local` or `local_a`, shorthand `ea` (`extend a`) or `left` (`global left`), symbol `▝`, index `2`, or fully specify `0010`.
+    /// The alignment type has four places left & right for both a & b. Specifying it fully gives you left_a,left_b,right_a,right_b as a binary number, eg `1111` is `global` and `1010` is `global a`.
+    #[arg(long, value_parser=type_parser)]
+    pub r#type: Option<Type>,
 }
 
 impl AlignmentType {
     pub fn ty(&self) -> rustyms::align::Type {
-        if self.local {
-            rustyms::align::Type::Local
+        if let Some(ty) = self.r#type {
+            ty
+        } else if self.local {
+            rustyms::align::Type::LOCAL
         } else if self.semi_global {
-            rustyms::align::Type::GlobalForB
+            rustyms::align::Type::GLOBAL_B
         } else if self.semi_global_a {
-            rustyms::align::Type::GlobalForA
+            rustyms::align::Type::GLOBAL_A
         } else {
-            rustyms::align::Type::Global
+            rustyms::align::Type::GLOBAL
         }
     }
 }
@@ -284,6 +291,11 @@ fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
         .collect()
 }
 type AminoAcids = Vec<AminoAcid>;
+
+fn type_parser(input: &str) -> Result<Type, String> {
+    input.parse().map_err(|()| format!("Not a valid alignment type: '{input}'"))
+}
+
 #[derive(Debug, Clone)]
 pub enum Modifications {
     None,

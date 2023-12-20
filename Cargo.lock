@@ -246,7 +246,7 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 [[package]]
 name = "imgt-germlines"
 version = "0.1.0"
-source = "git+https://github.com/snijderlab/imgt-germlines#3d4d354b233be15357b46516ffe74413cc36f3bf"
+source = "git+https://github.com/snijderlab/imgt-germlines#3b32337ab2cbd6047c1b6537fdcebed267afece7"
 dependencies = [
  "bincode",
  "itertools",
@@ -513,7 +513,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "rustyms"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#fbaefae48d8451848e126e378d2ff20068c0002f"
+source = "git+https://github.com/snijderlab/rustyms#0d0aefa10c3299ba1f5d2af91d8435b18e4e661a"
 dependencies = [
  "bincode",
  "flate2",

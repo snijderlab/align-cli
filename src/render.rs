@@ -433,7 +433,11 @@ pub fn show_alignment_header(
                 format!("{} {}", num.yellow(), unit)
             }))
         },
-        format!("Tolerance: {}, Alignment: {:?}", tolerance, alignment.ty).dimmed(),
+        {
+            let description = alignment.ty.description();
+            let symbol = alignment.ty.symbol();
+            format!("Tolerance: {tolerance}, Alignment: {}", if description == "special" {format!("{description} ({symbol})")} else {description.to_string()}).dimmed()
+        },
         names.0,
         alignment.start_a.to_string().magenta(),
         names.1,
