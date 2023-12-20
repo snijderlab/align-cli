@@ -1,6 +1,7 @@
 use colored::{Color, Colorize, Styles};
 use imgt_germlines::{Allele, Region};
 use itertools::Itertools;
+use rustyms::system::Mass;
 use rustyms::{align::MatchType, MassTolerance};
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -419,13 +420,10 @@ pub fn show_alignment_header(
         .mass_difference().is_some_and(|d| d.value==0.0) {
             "Equal mass".yellow().to_string()
         } else {
-            format!("Mass difference: {}Da {}",
+            format!("Mass difference: {} {}",
         alignment
             .mass_difference()
-            .map_or("??".red().to_string(), |m| {
-                let (num, suf) = engineering_notation(m.value, 3);
-                format!("{} {}", num.yellow(), suf.map_or(String::new(), |s| s.to_string()))
-            }),
+            .map_or("??".red().to_string(), display_mass),
         alignment
             .ppm()
             .map_or("??".red().to_string(), |m| {
@@ -604,6 +602,15 @@ pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styl
         println!();
     }
     line("╰", "┴", "╯");
+}
+
+pub fn display_mass(value: Mass) -> String {
+    let (num, suf) = engineering_notation(value.value, 3);
+    format!(
+        "{} {}Da",
+        num.yellow(),
+        suf.map_or(String::new(), |s| s.to_string())
+    )
 }
 
 /// Display the given value in engineering notation eg `1000` -> `10 k`, with the given number of decimal points and returns the suffix separately.

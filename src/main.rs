@@ -370,18 +370,14 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
     if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
         let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
         println!(
-            "Full mass: {} Da | {} Da {}",
-            format!("{:.4}", complete.value).yellow(),
-            format!(
-                "{:.4}",
-                seq.formula().unwrap().average_weight().unwrap().value
-            )
-            .yellow(),
+            "Full mass: {} | {} {}",
+            display_mass(complete),
+            display_mass(seq.formula().unwrap().average_weight().unwrap()),
             "(monoisotopic | average)".dimmed(),
         );
         println!(
-            "Bare mass: {} Da {}",
-            format!("{:.4}", bare.value).yellow(),
+            "Bare mass: {} {}",
+            display_mass(bare),
             "(no N/C terminal taken into account)".dimmed(),
         );
         println!(
@@ -455,24 +451,16 @@ fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
                 println!(
                     "{} {} {}",
                     modification.to_string().purple(),
-                    format!(
-                        "{:.4}",
-                        modification.formula().monoisotopic_mass().unwrap().value
-                    )
-                    .blue(),
+                    display_mass(modification.formula().monoisotopic_mass().unwrap()),
                     modification.formula().hill_notation_fancy().green(),
                 );
             }
         }
     } else if let Some(monoisotopic) = modification.formula().monoisotopic_mass() {
         println!(
-            "Full mass: {} Da | {} Da  {}",
-            format!("{:.4}", monoisotopic.value).yellow(),
-            format!(
-                "{:.4}",
-                modification.formula().average_weight().unwrap().value
-            )
-            .yellow(),
+            "Full mass: {} | {}  {}",
+            display_mass(monoisotopic),
+            display_mass(modification.formula().average_weight().unwrap()),
             "(monoisotopic | average)".dimmed(),
         );
         println!(
