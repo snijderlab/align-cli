@@ -144,7 +144,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -246,7 +246,7 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 [[package]]
 name = "imgt-germlines"
 version = "0.1.0"
-source = "git+https://github.com/snijderlab/imgt-germlines#3b32337ab2cbd6047c1b6537fdcebed267afece7"
+source = "git+https://github.com/snijderlab/imgt-germlines#76b1dff422656b5095426a4cc91f459b5d5e9303"
 dependencies = [
  "bincode",
  "itertools",
@@ -399,9 +399,9 @@ checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.70"
+version = "1.0.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39278fbbf5fb4f646ce651690877f89d1c5811a3d4acb27700c1cb3cdb78fd3b"
+checksum = "75cb1540fadbd5b8fbccc4dddad2734eba435053f725621c070711a14bb5f4b8"
 dependencies = [
  "unicode-ident",
 ]
@@ -513,7 +513,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "rustyms"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#0d0aefa10c3299ba1f5d2af91d8435b18e4e661a"
+source = "git+https://github.com/snijderlab/rustyms#8ae3c0f7ce99ca9a4acf2bea4bd13ea91d909e4c"
 dependencies = [
  "bincode",
  "flate2",
@@ -550,7 +550,7 @@ checksum = "43576ca501357b9b071ac53cdc7da8ef0cbd9493d8df094cd821777ea6e894d3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.41",
+ "syn 2.0.42",
 ]
 
 [[package]]
@@ -598,9 +598,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.41"
+version = "2.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c8b28c477cc3bf0e7966561e3460130e1255f7a1cf71931075f1c5e7a7e269"
+checksum = "5b7d0a2c048d661a1a59fcd7355baa232f7ed34e0ee4df2eef3c1c1c0d3852d8"
 dependencies = [
  "proc-macro2",
  "quote",

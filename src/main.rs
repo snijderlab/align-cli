@@ -31,7 +31,8 @@ fn main() {
             b.clone(),
             args.tolerance,
             args.alignment_type.ty(),
-            args.normal,
+            args.scoring_matrix.matrix(),
+            args.alignment_kind,
         );
         show_annotated_mass_alignment(
             &alignment,
@@ -56,7 +57,8 @@ fn main() {
                         search_sequence.clone(),
                         args.tolerance,
                         args.alignment_type.ty(),
-                        args.normal,
+                        args.scoring_matrix.matrix(),
+                        args.alignment_kind,
                     ),
                 )
             })
@@ -124,7 +126,8 @@ fn main() {
                         seq_b.clone(),
                         args.tolerance,
                         args.alignment_type.ty(),
-                        args.normal,
+                        args.scoring_matrix.matrix(),
+                        args.alignment_kind,
                     ),
                 )
             })
@@ -208,7 +211,8 @@ fn main() {
                         seq_b.clone(),
                         args.tolerance,
                         Type::GLOBAL_A,
-                        args.normal,
+                        args.scoring_matrix.matrix(),
+                        args.alignment_kind,
                     ),
                 )
             })
@@ -273,7 +277,8 @@ fn main() {
                         seq_b.clone().sequence.into_iter().skip(v_length).into(),
                         args.tolerance,
                         Type::GLOBAL_A,
-                        args.normal,
+                        args.scoring_matrix.matrix(),
+                        args.alignment_kind,
                     ),
                 )
             })
@@ -311,7 +316,8 @@ fn main() {
                 parse_peptide(x),
                 args.tolerance,
                 args.alignment_type.ty(),
-                args.normal,
+                args.scoring_matrix.matrix(),
+                args.alignment_kind,
             );
             println!(
                 "Selected: {} {}",
@@ -540,6 +546,7 @@ fn display_germline(allele: Allele, args: &Cli) {
         seq_a: allele.sequence.clone(),
         seq_b: LinearPeptide::default(),
         ty: rustyms::align::Type::GLOBAL,
+        maximal_step: 1,
     };
     println!(
         "{} ({}) {}",
@@ -563,11 +570,16 @@ fn align(
     seq_b: LinearPeptide,
     tolerance: MassTolerance,
     ty: Type,
-    normal: bool,
+    matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
+    kind: AlignmentKind,
 ) -> Alignment {
-    if normal {
-        rustyms::align::align::<1>(seq_a, seq_b, rustyms::align::BLOSUM62, tolerance, ty)
+    if kind.normal {
+        rustyms::align::align::<1>(seq_a, seq_b, matrix, tolerance, ty)
+    } else if kind.mass_based_huge {
+        rustyms::align::align::<32>(seq_a, seq_b, matrix, tolerance, ty)
+    } else if kind.mass_based_long {
+        rustyms::align::align::<8>(seq_a, seq_b, matrix, tolerance, ty)
     } else {
-        rustyms::align::align::<4>(seq_a, seq_b, rustyms::align::BLOSUM62, tolerance, ty)
+        rustyms::align::align::<4>(seq_a, seq_b, matrix, tolerance, ty)
     }
 }

@@ -407,7 +407,7 @@ pub fn show_alignment_header(
 ) {
     let (identical, similar, gap, length) = alignment.stats();
     println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}, {}\nStart: {} {} {} {}, Path: {}\n",
+        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
         format!("({}/{})", identical, length).dimmed(),
         format!("{:.3}", similar as f64 / length as f64).blue(),
@@ -431,16 +431,18 @@ pub fn show_alignment_header(
                 format!("{} {}", num.yellow(), unit)
             }))
         },
-        {
-            let description = alignment.ty.description();
-            let symbol = alignment.ty.symbol();
-            format!("Tolerance: {tolerance}, Alignment: {}", if description == "special" {format!("{description} ({symbol})")} else {description.to_string()}).dimmed()
-        },
         names.0,
         alignment.start_a.to_string().magenta(),
         names.1,
         (additional_b_start.unwrap_or_default() + alignment.start_b).to_string().magenta(),
         alignment.short().dimmed(),
+        {
+            let description = alignment.ty.description();
+            let symbol = alignment.ty.symbol();
+            format!("Tolerance: {tolerance}, Alignment: {}, Maximal isobaric step: {}", 
+            if description == "special" {format!("{description} ({symbol})")} else {description.to_string()},
+            alignment.maximal_step).dimmed()
+        },
     );
 }
 

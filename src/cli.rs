@@ -3,7 +3,7 @@ use imgt_germlines::{AlleleSelection, Gene, GeneType, ChainType, Selection, Spec
 use rustyms::{
     modification::ReturnModification,
     placement_rule::*,
-    AminoAcid,  ComplexPeptide, LinearPeptide, MassTolerance, Modification, align::Type,
+    AminoAcid,  ComplexPeptide, LinearPeptide, MassTolerance, Modification, align::{Type, self},
 };
 use std::{collections::HashSet, fmt::Display};
 
@@ -33,14 +33,17 @@ pub struct Cli {
     #[command(flatten)]
     pub second: SecondSelection,
 
+    /// The kind of alignment (normal/mass based/etc), can only be one of these
+    #[command(flatten)]
+    pub alignment_kind: AlignmentKind,
+
     /// The type of alignment, can only be one of these
     #[command(flatten)]
     pub alignment_type: AlignmentType,
 
-    /// Use normal alignment (instead of the default of Mass alignment) this uses Smith Waterman or Needleman Wunsch algorithms (based on the alignment mode)
-    /// using the BLOSUM62 scoring table.
-    #[arg(long)]
-    pub normal: bool,
+    /// The scoring matrix used, forced to be only one of the possible values
+    #[command(flatten)]
+    pub scoring_matrix: ScoringMatrix,
 
     /// The number of characters to show on a single line in the alignment
     #[arg(short = 'n', long, default_value_t = 50)]
@@ -94,6 +97,82 @@ pub struct Cli {
 fn verify_cli() {
     use clap::CommandFactory;
     Cli::command().debug_assert()
+}
+
+#[derive(Args, Debug, Clone, Copy)]
+#[group(multiple = false)]
+pub struct AlignmentKind {
+    /// Use normal alignment (instead of the default of Mass alignment) this uses Smith Waterman or Needleman Wunsch algorithms (based on the alignment mode)
+    /// using the same modified BLOSUM62 scoring table as used in mass based alignment. Note: this is the same mass based alignment algorithm but set to a
+    /// maximal length of isobaric sets of 1, meaning it will still handle modifications and show I/L as isobaric.
+    #[arg(long)]
+    pub normal: bool,
+
+    /// Do mass based alignment but allow for a maximal isobaric set length of 8 instead of the default 4.
+    #[arg(long)]
+    pub mass_based_long: bool,
+
+    /// Do mass based alignment but allow for a maximal isobaric set length of 32 instead of the default 4.
+    #[arg(long)]
+    pub mass_based_huge: bool,
+}
+
+#[derive(Args, Debug)]
+#[group(multiple = false)]
+pub struct ScoringMatrix {
+    /// BLOSUM45 matrix
+    #[arg(long)]
+    pub blosum45: bool,
+    /// BLOSUM50 matrix
+    #[arg(long)]
+    pub blosum50: bool,
+    /// BLOSUM62 matrix [default]
+    #[arg(long)]
+    pub blosum62: bool,
+    /// BLOSUM80 matrix
+    #[arg(long)]
+    pub blosum80: bool,
+    /// BLOSUM90 matrix
+    #[arg(long)]
+    pub blosum90: bool,
+    /// Identity matrix
+    #[arg(long)]
+    pub identity: bool,
+    /// PAM30 matrix
+    #[arg(long)]
+    pub pam30: bool,
+    /// PAM70 matrix
+    #[arg(long)]
+    pub pam70: bool,
+    /// PAM250 matrix
+    #[arg(long)]
+    pub pam250: bool,
+}
+
+impl ScoringMatrix {
+    pub fn matrix(&self) -> &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER] {
+        if self.blosum45 {
+            align::BLOSUM45
+        } else if self.blosum50 {
+            align::BLOSUM50
+        } else if self.blosum62 {
+            align::BLOSUM62
+        } else if self.blosum80 {
+            align::BLOSUM80
+        } else if self.blosum90 {
+            align::BLOSUM90
+        } else if self.identity {
+            align::IDENTITY
+        } else if self.pam30 {
+            align::PAM30
+        } else if self.pam70 {
+            align::PAM70
+        } else if self.pam250 {
+            align::PAM250
+        } else {
+            align::BLOSUM62
+        }
+    }
 }
 
 #[derive(Args, Debug)]
