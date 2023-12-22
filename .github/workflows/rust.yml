@@ -25,6 +25,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: target/release/align_amd64
+          name: align_amd64
+
   build-win:
     runs-on: windows-latest
 
@@ -45,6 +51,12 @@ jobs:
           files: target/release/align.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: target/release/align.exe
+          name: align.exe
 
   build-mac:
     runs-on: macos-latest
@@ -70,3 +82,9 @@ jobs:
             target/release/align_darwin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: target/release/align_darwin
+          name: align_darwin
