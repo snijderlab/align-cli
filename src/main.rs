@@ -8,7 +8,8 @@ use rustyms::{
     modification::GnoComposition,
     ontologies::*,
     placement_rule::*,
-    AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification,
+    AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification, MultiChemical,
+    MultiMolecularFormula,
 };
 use std::{collections::HashSet, io::Write, process::exit};
 
@@ -364,7 +365,9 @@ fn main() {
 /// Parses the peptide and assumes it to be linear or shows an error and exit
 fn parse_peptide(input: &str) -> LinearPeptide {
     match ComplexPeptide::pro_forma(input) {
-        Ok(v) => v.assume_linear(),
+        Ok(v) => v
+            .singular()
+            .expect("Expected a singular peptide but a chimeric peptide was supplied"),
         Err(e) => {
             println!("Peptide is not valid ProForma: {}", e);
             exit(1);
@@ -373,73 +376,123 @@ fn parse_peptide(input: &str) -> LinearPeptide {
 }
 
 fn single_stats(args: &Cli, seq: LinearPeptide) {
-    if let Some(complete) = seq.formula().and_then(|f| f.monoisotopic_mass()) {
-        let bare = seq.bare_formula().unwrap().monoisotopic_mass().unwrap();
-        println!(
-            "Full mass: {} | {} {}",
-            display_mass(complete),
-            display_mass(seq.formula().unwrap().average_weight().unwrap()),
-            "(monoisotopic | average)".dimmed(),
-        );
-        println!(
-            "Bare mass: {} {}",
-            display_mass(bare),
-            "(no N/C terminal taken into account)".dimmed(),
-        );
-        println!(
-            "Composition: {} {}",
-            seq.bare_formula().unwrap().hill_notation_fancy().green(),
-            "(no N/C terminal taken into account)".dimmed(),
-        );
-        if !matches!(args.isobaric, IsobaricNumber::Limited(0)) {
-            match args.isobaric {
-                IsobaricNumber::All => {
-                    println!(
-                        "Isobaric options {}: ",
-                        format!("(all, tolerance {})", args.tolerance).dimmed()
-                    );
+    let full_formulas = seq.formulas().unique_formulas();
+    let bare_formulas = seq.bare_formulas().unique_formulas();
+    print_multi_formula(&full_formulas, "Full", "");
+    print_multi_formula(&bare_formulas, "Bare", "no N/C terminal taken into account");
+    let multiple = full_formulas.len() > 1;
+
+    let bare = seq
+        .bare_formulas()
+        .mass_bounds()
+        .into_option()
+        .expect("No masses for peptide")
+        .0
+        .monoisotopic_mass();
+    println!();
+    if multiple {
+        println!("{}", "Multiple precursor masses found, it will generate isobaric options based on the smallest mass".dimmed().italic());
+    }
+    if !matches!(args.isobaric, IsobaricNumber::Limited(0)) {
+        match args.isobaric {
+            IsobaricNumber::All => {
+                println!(
+                    "Isobaric options {}: ",
+                    format!("(all, tolerance {})", args.tolerance).dimmed()
+                );
+                let _ = std::io::stdout().flush();
+                for set in find_isobaric_sets(
+                    bare,
+                    args.tolerance,
+                    args.amino_acids
+                        .as_deref()
+                        .unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
+                    args.fixed.mods(),
+                    args.variable.mods(),
+                    args.include.as_ref(),
+                ) {
+                    print!("{}, ", format!("{set}").blue());
                     let _ = std::io::stdout().flush();
-                    for set in find_isobaric_sets(
-                        bare,
-                        args.tolerance,
-                        args.amino_acids
-                            .as_deref()
-                            .unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
-                        args.fixed.mods(),
-                        args.variable.mods(),
-                        args.include.as_ref(),
-                    ) {
-                        print!("{}, ", format!("{set}").blue());
-                        let _ = std::io::stdout().flush();
-                    }
                 }
-                IsobaricNumber::Limited(limit) => {
-                    println!(
-                        "Isobaric options: {}",
-                        format!("(limited to {}, tolerance {})", limit, args.tolerance).dimmed()
-                    );
+            }
+            IsobaricNumber::Limited(limit) => {
+                println!(
+                    "Isobaric options: {}",
+                    format!("(limited to {}, tolerance {})", limit, args.tolerance).dimmed()
+                );
+                let _ = std::io::stdout().flush();
+                for set in find_isobaric_sets(
+                    bare,
+                    args.tolerance,
+                    args.amino_acids
+                        .as_deref()
+                        .unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
+                    args.fixed.mods(),
+                    args.variable.mods(),
+                    args.include.as_ref(),
+                )
+                .take(limit)
+                {
+                    print!("{}, ", format!("{set}").blue());
                     let _ = std::io::stdout().flush();
-                    for set in find_isobaric_sets(
-                        bare,
-                        args.tolerance,
-                        args.amino_acids
-                            .as_deref()
-                            .unwrap_or(AminoAcid::UNIQUE_MASS_AMINO_ACIDS),
-                        args.fixed.mods(),
-                        args.variable.mods(),
-                        args.include.as_ref(),
-                    )
-                    .take(limit)
-                    {
-                        print!("{}, ", format!("{set}").blue());
-                        let _ = std::io::stdout().flush();
-                    }
                 }
             }
         }
-    } else {
-        println!("The sequence has no defined mass");
     }
+}
+
+fn print_multi_formula(formulas: &MultiMolecularFormula, prefix: &str, suffix: &str) {
+    let multiple = formulas.len() > 1;
+    print!("{}: ", prefix);
+    if multiple {
+        println!();
+    }
+    let mut lengths = (0, 0, 0);
+    let mut rows = Vec::with_capacity(formulas.len());
+    for formula in formulas.iter() {
+        let row = (
+            formula.hill_notation_fancy().green(),
+            display_mass(formula.monoisotopic_mass()),
+            display_mass(formula.average_weight()),
+        );
+        lengths = (
+            lengths.0.max(row.0.chars().count()),
+            lengths.1.max(row.1.chars().count()),
+            lengths.2.max(row.2.chars().count()),
+        );
+        rows.push(row);
+    }
+    for formula in formulas.iter() {
+        if multiple {
+            print!("  ");
+        }
+        print!(
+            "{:3$} {:4$} {:5$}",
+            formula.hill_notation_fancy().green(),
+            display_mass(formula.monoisotopic_mass()),
+            display_mass(formula.average_weight()),
+            lengths.0,
+            lengths.1,
+            lengths.2,
+        );
+        if multiple {
+            println!();
+        }
+    }
+    if multiple {
+        print!("  ");
+    } else {
+        print!(" ");
+    }
+    println!(
+        "{}{}",
+        "(formula | monoisotopic mass | average weight)".dimmed(),
+        if suffix.is_empty() {
+            String::new()
+        } else {
+            format!(" ({suffix})").dimmed().to_string()
+        }
+    )
 }
 
 fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
@@ -453,20 +506,21 @@ fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
             .chain(rustyms::ontologies::psimod_ontology())
             .chain(rustyms::ontologies::gnome_ontology())
         {
-            if tolerance.within(*mass, modification.formula().monoisotopic_mass().unwrap()) {
+            if tolerance.within(mass.as_mass(), modification.formula().monoisotopic_mass()) {
                 println!(
                     "{} {} {}",
                     modification.to_string().purple(),
-                    display_mass(modification.formula().monoisotopic_mass().unwrap()),
+                    display_mass(modification.formula().monoisotopic_mass()),
                     modification.formula().hill_notation_fancy().green(),
                 );
             }
         }
-    } else if let Some(monoisotopic) = modification.formula().monoisotopic_mass() {
+    } else {
+        let monoisotopic = modification.formula().monoisotopic_mass();
         println!(
             "Full mass: {} | {}  {}",
             display_mass(monoisotopic),
-            display_mass(modification.formula().average_weight().unwrap()),
+            display_mass(modification.formula().average_weight()),
             "(monoisotopic | average)".dimmed(),
         );
         println!(
@@ -530,8 +584,6 @@ fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
                 }
             }
         }
-    } else {
-        println!("{}", "No defined mass".red())
     }
 }
 

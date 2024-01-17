@@ -417,19 +417,15 @@ pub fn show_alignment_header(
         format!("{:.3}", alignment.normalised_score).green(),
         format!("({}/{})", alignment.absolute_score, alignment.maximal_score).dimmed(),
         if alignment
-        .mass_difference().is_some_and(|d| d.value==0.0) {
+        .mass_difference().value==0.0 {
             "Equal mass".yellow().to_string()
         } else {
-            format!("Mass difference: {} {}",
-        alignment
-            .mass_difference()
-            .map_or("??".red().to_string(), display_mass),
-        alignment
-            .ppm()
-            .map_or("??".red().to_string(), |m| {
-                let (num, unit) = relative_notation(m, 3);
-                format!("{} {}", num.yellow(), unit)
-            }))
+            let (num, unit) = relative_notation(alignment.ppm(), 3);
+            format!("{} {}", num.yellow(), unit);
+            format!("Mass difference: {} {} {}",
+                display_mass(alignment.mass_difference()),
+                num.yellow(),
+                unit,)
         },
         names.0,
         alignment.start_a.to_string().magenta(),
@@ -439,7 +435,7 @@ pub fn show_alignment_header(
         {
             let description = alignment.ty.description();
             let symbol = alignment.ty.symbol();
-            format!("Tolerance: {tolerance}, Alignment: {}, Maximal isobaric step: {}", 
+            format!("Tolerance: {tolerance}, Alignment: {}, Maximal isobaric step: {}",
             if description == "special" {format!("{description} ({symbol})")} else {description.to_string()},
             alignment.maximal_step).dimmed()
         },
