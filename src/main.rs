@@ -72,7 +72,7 @@ fn main() {
             "Score".to_string(),
             "Normalised score".to_string(),
             "Identity".to_string(),
-            "Similarity".to_string(),
+            "Mass similarity".to_string(),
             "Gap".to_string(),
         ]];
         for (rank, (fasta, alignment)) in selected.iter().enumerate() {
@@ -143,7 +143,7 @@ fn main() {
             "Score".to_string(),
             "Normalised score".to_string(),
             "Identity".to_string(),
-            "Similarity".to_string(),
+            "Mass similarity".to_string(),
             "Gap".to_string(),
         ]];
         for (rank, (imgt, alignment)) in selected.iter().enumerate() {
@@ -176,9 +176,10 @@ fn main() {
             ],
         );
         println!(
-            "{} ({} {})",
+            "{} ({} {} {})",
             "Alignment for the best match".underline().italic(),
             selected[0].0.species.scientific_name().dimmed(),
+            selected[0].0.species.common_name().dimmed(),
             format!("{} / {}", selected[0].0.name(), selected[0].0.fancy_name()).dimmed(),
         );
         show_annotated_mass_alignment(
@@ -228,7 +229,7 @@ fn main() {
             "Score".to_string(),
             "Normalised score".to_string(),
             "Identity".to_string(),
-            "Similarity".to_string(),
+            "Mass similarity".to_string(),
             "Gap".to_string(),
         ]];
         for (rank, (imgt, alignment)) in selected.iter().enumerate() {
@@ -287,8 +288,9 @@ fn main() {
         j_alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
         let j_alignment = j_alignments.first().unwrap();
         println!(
-            "Best scoring species: {}",
+            "Best scoring species: {} {}",
             selected[0].0.species.scientific_name().green(),
+            selected[0].0.species.common_name(),
         );
         let v_alignment = Alignment {
             seq_b: selected[0]
@@ -321,8 +323,9 @@ fn main() {
                 args.alignment_kind,
             );
             println!(
-                "Selected: {} {}",
+                "Selected: {} {} {}",
                 allele.species.scientific_name().to_string().purple(),
+                allele.species.common_name(),
                 format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
             );
             show_annotated_mass_alignment(
@@ -391,7 +394,7 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
         .monoisotopic_mass();
     println!();
     if multiple {
-        println!("{}", "Multiple precursor masses found, it will generate isobaric options based on the smallest mass".dimmed().italic());
+        println!("{}", "Multiple precursor masses found, it will generate isobaric options based on the lowest bare mass".dimmed().italic());
     }
     if !matches!(args.isobaric, IsobaricNumber::Limited(0)) {
         match args.isobaric {
@@ -445,7 +448,14 @@ fn print_multi_formula(formulas: &MultiMolecularFormula, prefix: &str, suffix: &
     let multiple = formulas.len() > 1;
     print!("{}: ", prefix);
     if multiple {
-        println!();
+        println!(
+            "{}",
+            if suffix.is_empty() {
+                String::new()
+            } else {
+                format!("({suffix})").dimmed().to_string()
+            }
+        )
     }
     let mut lengths = (0, 0, 0);
     let mut rows = Vec::with_capacity(formulas.len());
@@ -487,7 +497,7 @@ fn print_multi_formula(formulas: &MultiMolecularFormula, prefix: &str, suffix: &
     println!(
         "{}{}",
         "(formula | monoisotopic mass | average weight)".dimmed(),
-        if suffix.is_empty() {
+        if suffix.is_empty() || multiple {
             String::new()
         } else {
             format!(" ({suffix})").dimmed().to_string()
@@ -601,7 +611,7 @@ fn display_germline(allele: Allele, args: &Cli) {
         maximal_step: 1,
     };
     println!(
-        "{} ({}) {}",
+        "{} {} {}",
         allele.species.scientific_name().to_string().purple(),
         allele.species.common_name(),
         format!("{} / {}", allele.name(), allele.fancy_name()).purple(),

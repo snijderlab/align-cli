@@ -407,7 +407,7 @@ pub fn show_alignment_header(
 ) {
     let (identical, similar, gap, length) = alignment.stats();
     println!(
-        "Identity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
+        "Identity: {} {}, Mass similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
         format!("({}/{})", identical, length).dimmed(),
         format!("{:.3}", similar as f64 / length as f64).blue(),
