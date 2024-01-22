@@ -3,7 +3,7 @@ use imgt_germlines::{AlleleSelection, Gene, GeneType, ChainType, Selection, Spec
 use rustyms::{
     modification::ReturnModification,
     placement_rule::*,
-    AminoAcid,  ComplexPeptide, LinearPeptide, MassTolerance, Modification, align::{Type, self},
+    AminoAcid,  ComplexPeptide, LinearPeptide, Tolerance, Modification, align::{Type, self},
 };
 use std::{collections::HashSet, fmt::Display};
 
@@ -85,8 +85,8 @@ pub struct Cli {
     pub amino_acids: Option<AminoAcids>,
 
     /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, eg `10.0ppm` or `2.3da`
-    #[arg(short, long, default_value_t = MassTolerance::Ppm(10.0), value_parser=mass_tolerance_parse)]
-    pub tolerance: MassTolerance,
+    #[arg(short, long, default_value_t = Tolerance::ppm(10.0.into()), value_parser=mass_tolerance_parse)]
+    pub tolerance: Tolerance,
 
     /// A modification you want details on, if it is a mass shift modification eg `+58.01` it will show all predefined modifications that are within the tolerance of this mass
     #[arg(short, long, value_parser=modification_parse, allow_hyphen_values=true)]
@@ -344,7 +344,7 @@ impl Display for IsobaricNumber {
         }
     }
 }
-fn mass_tolerance_parse(input: &str) -> Result<MassTolerance, &'static str> {
+fn mass_tolerance_parse(input: &str) -> Result<Tolerance, &'static str> {
     input.parse().map_err(|()| "Invalid tolerance parameter")
 }
 fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {

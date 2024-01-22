@@ -8,8 +8,8 @@ use rustyms::{
     modification::GnoComposition,
     ontologies::*,
     placement_rule::*,
-    AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassTolerance, Modification, MultiChemical,
-    MultiMolecularFormula,
+    AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassComparable, Modification,
+    MolecularFormula, Multi, MultiChemical, Tolerance,
 };
 use std::{collections::HashSet, io::Write, process::exit};
 
@@ -379,8 +379,8 @@ fn parse_peptide(input: &str) -> LinearPeptide {
 }
 
 fn single_stats(args: &Cli, seq: LinearPeptide) {
-    let full_formulas = seq.formulas().unique_formulas();
-    let bare_formulas = seq.bare_formulas().unique_formulas();
+    let full_formulas = seq.formulas().unique();
+    let bare_formulas = seq.bare_formulas().unique();
     print_multi_formula(&full_formulas, "Full", "");
     print_multi_formula(&bare_formulas, "Bare", "no N/C terminal taken into account");
     let multiple = full_formulas.len() > 1;
@@ -444,7 +444,7 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
     }
 }
 
-fn print_multi_formula(formulas: &MultiMolecularFormula, prefix: &str, suffix: &str) {
+fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix: &str) {
     let multiple = formulas.len() > 1;
     print!("{}: ", prefix);
     if multiple {
@@ -505,7 +505,7 @@ fn print_multi_formula(formulas: &MultiMolecularFormula, prefix: &str, suffix: &
     )
 }
 
-fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
+fn modification_stats(modification: &Modification, tolerance: Tolerance) {
     if let Modification::Mass(mass) = modification {
         println!(
             "All ontology modifications close to the given monoisotopic mass: {}",
@@ -516,7 +516,10 @@ fn modification_stats(modification: &Modification, tolerance: MassTolerance) {
             .chain(rustyms::ontologies::psimod_ontology())
             .chain(rustyms::ontologies::gnome_ontology())
         {
-            if tolerance.within(mass.as_mass(), modification.formula().monoisotopic_mass()) {
+            if tolerance.within(
+                &mass.into_inner(),
+                &modification.formula().monoisotopic_mass(),
+            ) {
                 println!(
                     "{} {} {}",
                     modification.to_string().purple(),
@@ -630,7 +633,7 @@ fn display_germline(allele: Allele, args: &Cli) {
 fn align(
     seq_a: LinearPeptide,
     seq_b: LinearPeptide,
-    tolerance: MassTolerance,
+    tolerance: Tolerance,
     ty: Type,
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     kind: AlignmentKind,

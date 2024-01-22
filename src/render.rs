@@ -2,7 +2,7 @@ use colored::{Color, Colorize, Styles};
 use imgt_germlines::{Allele, Region};
 use itertools::Itertools;
 use rustyms::system::Mass;
-use rustyms::{align::MatchType, MassTolerance};
+use rustyms::{align::MatchType, Tolerance};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -22,7 +22,7 @@ enum StepType {
 
 pub fn show_annotated_mass_alignment(
     alignment: &rustyms::align::Alignment,
-    tolerance: MassTolerance,
+    tolerance: Tolerance,
     imgt: Option<&Allele>,
     line_width: usize,
     context: bool,
@@ -52,7 +52,7 @@ pub fn show_annotated_mass_alignment(
 pub fn show_chained_annotated_mass_alignment(
     alignment1: &(&Allele, rustyms::align::Alignment),
     alignment2: &(Allele, rustyms::align::Alignment),
-    tolerance: MassTolerance,
+    tolerance: Tolerance,
     line_width: usize,
     context: bool,
 ) {
@@ -401,7 +401,7 @@ fn show_alignment_inner(
 
 pub fn show_alignment_header(
     alignment: &rustyms::align::Alignment,
-    tolerance: MassTolerance,
+    tolerance: Tolerance,
     names: (impl Display, impl Display),
     additional_b_start: Option<usize>,
 ) {
