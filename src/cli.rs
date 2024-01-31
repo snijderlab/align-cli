@@ -112,7 +112,7 @@ pub struct AlignmentKind {
     #[arg(long)]
     pub mass_based_long: bool,
 
-    /// Do mass based alignment but allow for a maximal isobaric set length of 32 instead of the default 4.
+    /// Do mass based alignment but allow for an unbounded maximal isobaric set instead of the default 4.
     #[arg(long)]
     pub mass_based_huge: bool,
 }
@@ -228,6 +228,11 @@ pub struct SecondSelection {
     /// A fasta database file to open to align the sequence to, only provide a single sequence for this mode
     #[arg(short, long)]
     pub file: Option<String>,
+
+    /// A csv file of pairs of sequences to score it returns a csv file with statistics added as last columns. 
+    /// The requirement is that the pair columns have to be called "a" and "b".
+    #[arg(long)]
+    pub csv: Option<String>,
 
     /// Align against IMGT germline sequences. 
     /// 

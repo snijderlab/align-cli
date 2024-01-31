@@ -1,6 +1,7 @@
 use clap::Parser;
 use colored::{Color, Colorize, Styles};
 use imgt_germlines::{Allele, GeneType, Selection};
+use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::{
     align::{Alignment, MatchType, Piece, Type},
@@ -11,7 +12,12 @@ use rustyms::{
     AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassComparable, Modification,
     MolecularFormula, Multi, MultiChemical, Tolerance,
 };
-use std::{collections::HashSet, io::Write, process::exit};
+use std::{
+    collections::HashSet,
+    io::{BufWriter, Write},
+    path::Path,
+    process::exit,
+};
 
 mod cli;
 mod legend;
@@ -344,6 +350,63 @@ fn main() {
         single_stats(&args, parse_peptide(x))
     } else if let Some(modification) = &args.modification {
         modification_stats(modification, args.tolerance);
+    } else if let Some(file) = &args.second.csv {
+        let csv = rustyms::identifications::csv::parse_csv(file, b',', None).unwrap();
+        let output = std::fs::File::create(
+            Path::new(file).with_file_name(
+                Path::new(file)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_str()
+                    .unwrap_or_default()
+                    .to_owned()
+                    + "_output.csv",
+            ),
+        )
+        .unwrap();
+        let mut writer = BufWriter::new(output);
+        let mut first = true;
+        for line in csv {
+            let line = line.unwrap();
+            if first {
+                writeln!(
+                    writer,
+                    "{},path,score,absolute score,maximal score,identical,similar,gaps,length",
+                    line.headers().join(",")
+                )
+                .unwrap();
+                first = false;
+            }
+            let alignment = align(
+                ComplexPeptide::pro_forma(line.index_column("a").unwrap().0)
+                    .unwrap()
+                    .singular()
+                    .unwrap(),
+                ComplexPeptide::pro_forma(line.index_column("b").unwrap().0)
+                    .unwrap()
+                    .singular()
+                    .unwrap(),
+                args.tolerance,
+                args.alignment_type.ty(),
+                args.scoring_matrix.matrix(),
+                args.alignment_kind,
+            );
+            let stats = alignment.stats();
+            writeln!(
+                writer,
+                "{},{},{},{},{},{},{},{},{}",
+                line.line(),
+                alignment.short(),
+                alignment.normalised_score,
+                alignment.absolute_score,
+                alignment.maximal_score,
+                stats.0,
+                stats.1,
+                stats.2,
+                stats.3
+            )
+            .unwrap();
+        }
     } else if let Some(IMGTSelection::Gene(species, gene, allele)) = &args.second.imgt {
         if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
             display_germline(allele, &args);
@@ -641,7 +704,7 @@ fn align(
     if kind.normal {
         rustyms::align::align::<1>(seq_a, seq_b, matrix, tolerance, ty)
     } else if kind.mass_based_huge {
-        rustyms::align::align::<32>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<{ usize::MAX }>(seq_a, seq_b, matrix, tolerance, ty)
     } else if kind.mass_based_long {
         rustyms::align::align::<8>(seq_a, seq_b, matrix, tolerance, ty)
     } else {

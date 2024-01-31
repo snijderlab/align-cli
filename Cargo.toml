@@ -20,3 +20,9 @@ itertools = "0.12"
 imgt-germlines = { git = "https://github.com/snijderlab/imgt-germlines" }
 rayon = "1.8"
 rustyms = { git = "https://github.com/snijderlab/rustyms" }
+
+[profile.release]
+debug = true
+opt-level = 3
+lto = true
+codegen-units = 1
