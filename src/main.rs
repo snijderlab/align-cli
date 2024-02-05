@@ -1,10 +1,10 @@
 use clap::Parser;
 use colored::{Color, Colorize, Styles};
-use imgt_germlines::{Allele, GeneType, Selection};
+use imgt_germlines::{par_consecutive_align, Allele, GeneType};
 use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::{
-    align::{Alignment, MatchType, Piece, Type},
+    align::{AlignType, Alignment, MatchType, Piece},
     find_isobaric_sets,
     modification::GnoComposition,
     ontologies::*,
@@ -123,6 +123,7 @@ fn main() {
     } else if let (Some(x), Some(IMGTSelection::Search(selection))) = (&args.a, &args.second.imgt) {
         let seq_b = parse_peptide(x);
         let mut alignments: Vec<_> = selection
+            .clone()
             .par_germlines()
             .map(|seq| {
                 let a = seq.sequence.clone();
@@ -200,122 +201,65 @@ fn main() {
     } else if let (Some(x), Some(IMGTSelection::Domain(species, chains, allele))) =
         (&args.a, &args.second.imgt)
     {
-        let seq_b = parse_peptide(x);
-        let v_selection = Selection {
-            species: species.clone(),
-            chains: chains.clone(),
-            genes: Some(HashSet::from([GeneType::V])),
-            allele: allele.clone(),
-        };
-
-        let mut v_alignments: Vec<_> = v_selection
-            .par_germlines()
-            .map(|seq| {
-                let a = seq.sequence.clone();
-                (
-                    seq,
-                    align(
-                        a,
-                        seq_b.clone(),
-                        args.tolerance,
-                        Type::GLOBAL_A,
-                        args.scoring_matrix.matrix(),
-                        args.alignment_kind,
-                    ),
-                )
-            })
-            .collect();
-        v_alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
-        let selected: Vec<_> = v_alignments.into_iter().take(args.number_of_hits).collect();
-        let mut data = vec![[
-            String::new(),
-            "Species".to_string(),
-            "IMGT name".to_string(),
-            "Alternative name".to_string(),
-            "Score".to_string(),
-            "Normalised score".to_string(),
-            "Identity".to_string(),
-            "Mass similarity".to_string(),
-            "Gap".to_string(),
-        ]];
-        for (rank, (imgt, alignment)) in selected.iter().enumerate() {
-            let stats = alignment.stats();
-            data.push([
-                (rank + 1).to_string(),
-                imgt.species.scientific_name().to_string(),
-                imgt.name(),
-                imgt.fancy_name(),
-                alignment.absolute_score.to_string(),
-                format!("{:.3}", alignment.normalised_score),
-                format!("{:.3}", stats.0 as f64 / stats.3 as f64),
-                format!("{:.3}", stats.1 as f64 / stats.3 as f64),
-                format!("{:.3}", stats.2 as f64 / stats.3 as f64),
-            ]);
-        }
-        table(
-            &data,
-            true,
-            &[
-                Styling::with_style(Styles::Dimmed),
-                Styling::none(),
-                Styling::none(),
-                Styling::with_style(Styles::Dimmed),
-                Styling::none(),
-                Styling::with_fg(Some(Color::Green)),
-                Styling::none(),
-                Styling::none(),
-                Styling::none(),
-            ],
-        );
-        let j_selection = Selection {
-            species: Some(HashSet::from([selected[0].0.species])),
-            chains: chains.clone(),
-            genes: Some(HashSet::from([GeneType::J])),
-            allele: allele.clone(),
-        };
-        let v_length = selected[0].1.start_a + selected[0].1.len_a();
-        let mut j_alignments: Vec<_> = j_selection
-            .par_germlines()
-            .map(|seq| {
-                let a = seq.sequence.clone();
-                (
-                    seq,
-                    align(
-                        a,
-                        seq_b.clone().sequence.into_iter().skip(v_length).into(),
-                        args.tolerance,
-                        Type::GLOBAL_A,
-                        args.scoring_matrix.matrix(),
-                        args.alignment_kind,
-                    ),
-                )
-            })
-            .collect();
-        j_alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
-        let j_alignment = j_alignments.first().unwrap();
-        println!(
-            "Best scoring species: {} {}",
-            selected[0].0.species.scientific_name().green(),
-            selected[0].0.species.common_name(),
-        );
-        let v_alignment = Alignment {
-            seq_b: selected[0]
-                .1
-                .seq_b
-                .sequence
-                .iter()
-                .take(v_length + 1)
-                .cloned()
-                .into(),
-            ..selected[0].1.clone()
-        };
-        show_chained_annotated_mass_alignment(
-            &(&selected[0].0, v_alignment),
-            j_alignment,
+        let scores = consecutive_align(
+            parse_peptide(x),
+            species.clone(),
+            chains.clone(),
+            allele.clone(),
             args.tolerance,
-            args.line_width,
-            args.context,
+            args.scoring_matrix.matrix(),
+            args.number_of_hits,
+            args.alignment_kind,
         );
+
+        for gene in &scores {
+            let mut data = vec![[
+                String::new(),
+                "Species".to_string(),
+                "IMGT name".to_string(),
+                "Alternative name".to_string(),
+                "Score".to_string(),
+                "Normalised score".to_string(),
+                "Identity".to_string(),
+                "Mass similarity".to_string(),
+                "Gap".to_string(),
+            ]];
+            for (rank, (imgt, alignment)) in gene.iter().enumerate() {
+                let stats = alignment.stats();
+                data.push([
+                    (rank + 1).to_string(),
+                    imgt.species.scientific_name().to_string(),
+                    imgt.name(),
+                    imgt.fancy_name(),
+                    alignment.absolute_score.to_string(),
+                    format!("{:.3}", alignment.normalised_score),
+                    format!("{:.3}", stats.0 as f64 / stats.3 as f64),
+                    format!("{:.3}", stats.1 as f64 / stats.3 as f64),
+                    format!("{:.3}", stats.2 as f64 / stats.3 as f64),
+                ]);
+            }
+            table(
+                &data,
+                true,
+                &[
+                    Styling::with_style(Styles::Dimmed),
+                    Styling::none(),
+                    Styling::none(),
+                    Styling::with_style(Styles::Dimmed),
+                    Styling::none(),
+                    Styling::with_fg(Some(Color::Green)),
+                    Styling::none(),
+                    Styling::none(),
+                    Styling::none(),
+                ],
+            );
+        }
+
+        let tops = scores
+            .into_iter()
+            .map(|options| options[0].clone())
+            .collect_vec();
+        show_chained_annotated_mass_alignment(&tops, args.tolerance, args.line_width, args.context);
     } else if let (Some(x), Some(IMGTSelection::Gene(species, gene, allele))) =
         (&args.a, &args.second.imgt)
     {
@@ -415,7 +359,7 @@ fn main() {
         }
     } else if let Some(IMGTSelection::Search(selection)) = &args.second.imgt {
         let mut first = true;
-        for allele in selection.germlines() {
+        for allele in selection.clone().germlines() {
             if !first {
                 println!();
             } else {
@@ -673,7 +617,7 @@ fn display_germline(allele: Allele, args: &Cli) {
         start_b: 0,
         seq_a: allele.sequence.clone(),
         seq_b: LinearPeptide::default(),
-        ty: rustyms::align::Type::GLOBAL,
+        ty: rustyms::align::AlignType::GLOBAL,
         maximal_step: 1,
     };
     println!(
@@ -697,17 +641,90 @@ fn align(
     seq_a: LinearPeptide,
     seq_b: LinearPeptide,
     tolerance: Tolerance,
-    ty: Type,
+    ty: AlignType,
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     kind: AlignmentKind,
 ) -> Alignment {
     if kind.normal {
         rustyms::align::align::<1>(seq_a, seq_b, matrix, tolerance, ty)
     } else if kind.mass_based_huge {
-        rustyms::align::align::<{ usize::MAX }>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<{ u16::MAX }>(seq_a, seq_b, matrix, tolerance, ty)
     } else if kind.mass_based_long {
         rustyms::align::align::<8>(seq_a, seq_b, matrix, tolerance, ty)
     } else {
         rustyms::align::align::<4>(seq_a, seq_b, matrix, tolerance, ty)
+    }
+}
+
+fn consecutive_align(
+    seq: LinearPeptide,
+    species: Option<HashSet<imgt_germlines::Species>>,
+    chains: Option<HashSet<imgt_germlines::ChainType>>,
+    allele: imgt_germlines::AlleleSelection,
+    tolerance: Tolerance,
+    matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
+    return_number: usize,
+    kind: AlignmentKind,
+) -> Vec<Vec<(Allele<'static>, Alignment)>> {
+    if kind.normal {
+        par_consecutive_align::<1>(
+            seq,
+            &[
+                (GeneType::V, AlignType::new(Some((true, true)), None)),
+                (GeneType::J, AlignType::new(Some((true, false)), None)),
+                (GeneType::C(None), AlignType::new(Some((true, true)), None)),
+            ],
+            species.clone(),
+            chains.clone(),
+            allele.clone(),
+            tolerance,
+            matrix,
+            return_number,
+        )
+    } else if kind.mass_based_huge {
+        par_consecutive_align::<{ u16::MAX }>(
+            seq,
+            &[
+                (GeneType::V, AlignType::new(Some((true, true)), None)),
+                (GeneType::J, AlignType::new(Some((true, false)), None)),
+                (GeneType::C(None), AlignType::new(Some((true, true)), None)),
+            ],
+            species.clone(),
+            chains.clone(),
+            allele.clone(),
+            tolerance,
+            matrix,
+            return_number,
+        )
+    } else if kind.mass_based_long {
+        par_consecutive_align::<8>(
+            seq,
+            &[
+                (GeneType::V, AlignType::new(Some((true, true)), None)),
+                (GeneType::J, AlignType::new(Some((true, false)), None)),
+                (GeneType::C(None), AlignType::new(Some((true, true)), None)),
+            ],
+            species.clone(),
+            chains.clone(),
+            allele.clone(),
+            tolerance,
+            matrix,
+            return_number,
+        )
+    } else {
+        par_consecutive_align::<4>(
+            seq,
+            &[
+                (GeneType::V, AlignType::new(Some((true, true)), None)),
+                (GeneType::J, AlignType::new(Some((true, false)), None)),
+                (GeneType::C(None), AlignType::new(Some((true, true)), None)),
+            ],
+            species.clone(),
+            chains.clone(),
+            allele.clone(),
+            tolerance,
+            matrix,
+            return_number,
+        )
     }
 }

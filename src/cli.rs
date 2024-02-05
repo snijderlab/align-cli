@@ -3,7 +3,7 @@ use imgt_germlines::{AlleleSelection, Gene, GeneType, ChainType, Selection, Spec
 use rustyms::{
     modification::ReturnModification,
     placement_rule::*,
-    AminoAcid,  ComplexPeptide, LinearPeptide, Tolerance, Modification, align::{Type, self},
+    AminoAcid,  ComplexPeptide, LinearPeptide, Tolerance, Modification, align::{AlignType, self},
 };
 use std::{collections::HashSet, fmt::Display};
 
@@ -198,22 +198,22 @@ pub struct AlignmentType {
 
     /// Specify the type fully. Use the full name eg `local` or `local_a`, shorthand `ea` (`extend a`) or `left` (`global left`), symbol `▝`, index `2`, or fully specify `0010`.
     /// The alignment type has four places left & right for both a & b. Specifying it fully gives you left_a,left_b,right_a,right_b as a binary number, eg `1111` is `global` and `1010` is `global a`.
-    #[arg(long, value_parser=type_parser)]
-    pub r#type: Option<Type>,
+    #[arg(long, value_parser=type_parser, allow_hyphen_values=true)]
+    pub r#type: Option<AlignType>,
 }
 
 impl AlignmentType {
-    pub fn ty(&self) -> rustyms::align::Type {
+    pub fn ty(&self) -> rustyms::align::AlignType {
         if let Some(ty) = self.r#type {
             ty
         } else if self.local {
-            rustyms::align::Type::LOCAL
+            rustyms::align::AlignType::LOCAL
         } else if self.semi_global {
-            rustyms::align::Type::GLOBAL_B
+            rustyms::align::AlignType::GLOBAL_B
         } else if self.semi_global_a {
-            rustyms::align::Type::GLOBAL_A
+            rustyms::align::AlignType::GLOBAL_A
         } else {
-            rustyms::align::Type::GLOBAL
+            rustyms::align::AlignType::GLOBAL
         }
     }
 }
@@ -376,7 +376,7 @@ fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
 }
 type AminoAcids = Vec<AminoAcid>;
 
-fn type_parser(input: &str) -> Result<Type, String> {
+fn type_parser(input: &str) -> Result<AlignType, String> {
     input.parse().map_err(|()| format!("Not a valid alignment type: '{input}'"))
 }
 

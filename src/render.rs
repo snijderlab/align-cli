@@ -50,56 +50,41 @@ pub fn show_annotated_mass_alignment(
 }
 
 pub fn show_chained_annotated_mass_alignment(
-    alignment1: &(&Allele, rustyms::align::Alignment),
-    alignment2: &(Allele, rustyms::align::Alignment),
+    alignments: &[(Allele, rustyms::align::Alignment)],
     tolerance: Tolerance,
     line_width: usize,
     context: bool,
 ) {
-    println!(
-        "{}: {}",
-        "V gene".blue(),
-        format!("{} / {}", alignment1.0.name(), alignment1.0.fancy_name(),).purple(),
-    );
-    show_alignment_header(
-        &alignment1.1,
-        tolerance,
-        (alignment1.0.name(), "Query"),
-        None,
-    );
-    println!(
-        "{}: {}",
-        "J gene".blue(),
-        format!("{} / {}", alignment2.0.name(), alignment2.0.fancy_name(),).purple(),
-    );
-    show_alignment_header(
-        &alignment2.1,
-        tolerance,
-        (alignment2.0.name(), "Query"),
-        Some(alignment1.1.start_b + alignment1.1.len_b()),
-    );
+    let mut start = 0;
+    for alignment in alignments {
+        println!(
+            "{}",
+            format!("{} / {}", alignment.0.name(), alignment.0.fancy_name(),).purple(),
+        );
+        show_alignment_header(
+            &alignment.1,
+            tolerance,
+            (alignment.0.name(), "Query"),
+            Some(start),
+        );
+        start += alignment.1.len_b() + alignment.1.start_b;
+    }
 
     let mut writer = CombinedLines::new(line_width, false, "Query");
-    let number_tail = show_alignment_inner(
-        &mut writer,
-        &alignment1.1,
-        Some(alignment1.0),
-        context,
-        None,
-        true,
-        String::new(),
-        alignment1.0.name(),
-    );
-    show_alignment_inner(
-        &mut writer,
-        &alignment2.1,
-        Some(&alignment2.0),
-        context,
-        Some(Region::CDR3),
-        false,
-        number_tail,
-        alignment2.0.name(),
-    );
+    let mut number_tail = String::new();
+    let mut last_context = None;
+    for (index, alignment) in alignments.iter().enumerate() {
+        (number_tail, last_context) = show_alignment_inner(
+            &mut writer,
+            &alignment.1,
+            Some(&alignment.0),
+            index == alignments.len() - 1 && context,
+            last_context, // Original overwrite J with CDR3
+            index != alignments.len() - 1,
+            number_tail,
+            alignment.0.name(),
+        );
+    }
     writer.flush();
 }
 
@@ -112,7 +97,7 @@ fn show_alignment_inner(
     room_on_end: bool,
     number_tail: String,
     a_name: String,
-) -> String {
+) -> (String, Option<Region>) {
     let mut a = alignment.start_a;
     let mut b = alignment.start_b;
     const NUMBER_GAP: usize = 10;
@@ -396,7 +381,7 @@ fn show_alignment_inner(
             );
         }
     }
-    number_tail
+    (number_tail, last_region)
 }
 
 pub fn show_alignment_header(
@@ -405,11 +390,13 @@ pub fn show_alignment_header(
     names: (impl Display, impl Display),
     additional_b_start: Option<usize>,
 ) {
-    let (identical, similar, gap, length) = alignment.stats();
+    let (identical, mass_similar, similar, gap, length) = alignment.stats();
     println!(
-        "Identity: {} {}, Mass similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
+        "Identity: {} {}, Mass similarity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
         format!("({}/{})", identical, length).dimmed(),
+        format!("{:.3}", mass_similar as f64 / length as f64).blue(),
+        format!("({}/{})", mass_similar, length).dimmed(),
         format!("{:.3}", similar as f64 / length as f64).blue(),
         format!("({}/{})", similar, length).dimmed(),
         format!("{:.3}", gap as f64 / length as f64).cyan(),
@@ -433,10 +420,9 @@ pub fn show_alignment_header(
         (additional_b_start.unwrap_or_default() + alignment.start_b).to_string().magenta(),
         alignment.short().dimmed(),
         {
-            let description = alignment.ty.description();
-            let symbol = alignment.ty.symbol();
-            format!("Tolerance: {tolerance}, Alignment: {}, Maximal isobaric step: {}",
-            if description == "special" {format!("{description} ({symbol})")} else {description.to_string()},
+            format!("Tolerance: {tolerance}, Alignment: {} ({}), Maximal isobaric step: {}",
+            alignment.ty.description(),
+            alignment.ty.symbol(),
             alignment.maximal_step).dimmed()
         },
     );
