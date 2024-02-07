@@ -12,6 +12,7 @@ impl Legend for imgt_germlines::Annotation {
             Self::Cysteine2 => Color::Blue,
             Self::Tryptophan => Color::Blue,
             Self::Phenylalanine => Color::Blue,
+            Self::Glycine => Color::Blue,
             Self::NGlycan => Color::Green, // TODO: If on CDR2 not visible
         })
     }

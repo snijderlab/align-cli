@@ -4,7 +4,7 @@ use imgt_germlines::{par_consecutive_align, Allele, GeneType};
 use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::{
-    align::{AlignType, Alignment, MatchType, Piece},
+    align::{AlignType, Alignment, MatchType, OwnedAlignment, Piece, RefAlignment},
     find_isobaric_sets,
     modification::GnoComposition,
     ontologies::*,
@@ -31,11 +31,11 @@ use styling::*;
 fn main() {
     let args = Cli::parse();
     if let (Some(a), Some(b)) = (&args.a, &args.second.b) {
-        let a = parse_peptide(a);
-        let b = parse_peptide(b);
+        let a = LinearPeptide::pro_forma(a).unwrap();
+        let b = LinearPeptide::pro_forma(b).unwrap();
         let alignment = align(
-            a.clone(),
-            b.clone(),
+            &a,
+            &b,
             args.tolerance,
             args.alignment_type.ty(),
             args.scoring_matrix.matrix(),
@@ -52,25 +52,23 @@ fn main() {
         );
     } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
         let sequences = rustyms::identifications::FastaData::parse_file(path).unwrap();
-        let search_sequence = parse_peptide(b);
+        let search_sequence = LinearPeptide::pro_forma(b).unwrap();
         let mut alignments: Vec<_> = sequences
             .into_par_iter()
             .map(|seq| {
-                let a = seq.peptide.clone();
-                (
-                    seq,
-                    align(
-                        a,
-                        search_sequence.clone(),
-                        args.tolerance,
-                        args.alignment_type.ty(),
-                        args.scoring_matrix.matrix(),
-                        args.alignment_kind,
-                    ),
-                )
+                let sequence = seq.peptide.sequence.iter().cloned().collect();
+                let alignment = align(
+                    &sequence,
+                    &search_sequence,
+                    args.tolerance,
+                    args.alignment_type.ty(),
+                    args.scoring_matrix.matrix(),
+                    args.alignment_kind,
+                );
+                (seq, alignment.to_owned())
             })
             .collect();
-        alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
+        alignments.sort_unstable_by(|a, b| b.1.cmp(&a.1));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
             String::new(),
@@ -86,8 +84,8 @@ fn main() {
             data.push([
                 (rank + 1).to_string(),
                 fasta.id.clone(),
-                alignment.absolute_score.to_string(),
-                format!("{:.3}", alignment.normalised_score),
+                alignment.score().1.to_string(),
+                format!("{:.3}", alignment.normalised_score()),
                 format!("{:.2}%", stats.0 as f64 / stats.3 as f64 * 100.0),
                 format!("{:.2}%", stats.1 as f64 / stats.3 as f64 * 100.0),
                 format!("{:.2}%", stats.2 as f64 / stats.3 as f64 * 100.0),
@@ -126,21 +124,18 @@ fn main() {
             .clone()
             .par_germlines()
             .map(|seq| {
-                let a = seq.sequence.clone();
-                (
-                    seq,
-                    align(
-                        a,
-                        seq_b.clone(),
-                        args.tolerance,
-                        args.alignment_type.ty(),
-                        args.scoring_matrix.matrix(),
-                        args.alignment_kind,
-                    ),
-                )
+                let alignment = align(
+                    seq.sequence,
+                    &seq_b,
+                    args.tolerance,
+                    args.alignment_type.ty(),
+                    args.scoring_matrix.matrix(),
+                    args.alignment_kind,
+                );
+                (seq, alignment)
             })
             .collect();
-        alignments.sort_unstable_by(|a, b| b.1.normalised_score.total_cmp(&a.1.normalised_score));
+        alignments.sort_unstable_by(|a, b| b.1.cmp(&a.1));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
             String::new(),
@@ -160,8 +155,8 @@ fn main() {
                 imgt.species.scientific_name().to_string(),
                 imgt.name(),
                 imgt.fancy_name(),
-                alignment.absolute_score.to_string(),
-                format!("{:.3}", alignment.normalised_score),
+                alignment.score().1.to_string(),
+                format!("{:.3}", alignment.normalised_score()),
                 format!("{:.3}", stats.0 as f64 / stats.3 as f64),
                 format!("{:.3}", stats.1 as f64 / stats.3 as f64),
                 format!("{:.3}", stats.2 as f64 / stats.3 as f64),
@@ -202,7 +197,7 @@ fn main() {
         (&args.a, &args.second.imgt)
     {
         let scores = consecutive_align(
-            parse_peptide(x),
+            &LinearPeptide::pro_forma(x).unwrap(),
             species.clone(),
             chains.clone(),
             allele.clone(),
@@ -231,8 +226,8 @@ fn main() {
                     imgt.species.scientific_name().to_string(),
                     imgt.name(),
                     imgt.fancy_name(),
-                    alignment.absolute_score.to_string(),
-                    format!("{:.3}", alignment.normalised_score),
+                    alignment.score().1.to_string(),
+                    format!("{:.3}", alignment.normalised_score()),
                     format!("{:.3}", stats.0 as f64 / stats.3 as f64),
                     format!("{:.3}", stats.1 as f64 / stats.3 as f64),
                     format!("{:.3}", stats.2 as f64 / stats.3 as f64),
@@ -264,9 +259,10 @@ fn main() {
         (&args.a, &args.second.imgt)
     {
         if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
+            let b = LinearPeptide::pro_forma(x).unwrap();
             let alignment = align(
-                allele.sequence.clone(),
-                parse_peptide(x),
+                allele.sequence,
+                &b,
                 args.tolerance,
                 args.alignment_type.ty(),
                 args.scoring_matrix.matrix(),
@@ -321,29 +317,26 @@ fn main() {
                 .unwrap();
                 first = false;
             }
+            let a = LinearPeptide::pro_forma(line.index_column("a").unwrap().0).unwrap();
+            let b = LinearPeptide::pro_forma(line.index_column("b").unwrap().0).unwrap();
             let alignment = align(
-                ComplexPeptide::pro_forma(line.index_column("a").unwrap().0)
-                    .unwrap()
-                    .singular()
-                    .unwrap(),
-                ComplexPeptide::pro_forma(line.index_column("b").unwrap().0)
-                    .unwrap()
-                    .singular()
-                    .unwrap(),
+                &a,
+                &b,
                 args.tolerance,
                 args.alignment_type.ty(),
                 args.scoring_matrix.matrix(),
                 args.alignment_kind,
             );
             let stats = alignment.stats();
+            let scores = alignment.score();
             writeln!(
                 writer,
                 "{},{},{},{},{},{},{},{},{}",
                 line.line(),
                 alignment.short(),
-                alignment.normalised_score,
-                alignment.absolute_score,
-                alignment.maximal_score,
+                scores.0,
+                scores.1,
+                scores.2,
                 stats.0,
                 stats.1,
                 stats.2,
@@ -608,18 +601,13 @@ fn modification_stats(modification: &Modification, tolerance: Tolerance) {
 }
 
 fn display_germline(allele: Allele, args: &Cli) {
-    let alignment = Alignment {
-        absolute_score: 0,
-        maximal_score: 0,
-        normalised_score: 0.0,
-        path: vec![Piece::new(0, 0, MatchType::FullIdentity, 1, 0); allele.sequence.len()],
-        start_a: 0,
-        start_b: 0,
-        seq_a: allele.sequence.clone(),
-        seq_b: LinearPeptide::default(),
-        ty: rustyms::align::AlignType::GLOBAL,
-        maximal_step: 1,
-    };
+    let alignment = rustyms::align::align::<1>(
+        allele.sequence,
+        allele.sequence,
+        rustyms::align::BLOSUM90,
+        Tolerance::new_ppm(10.0),
+        rustyms::align::AlignType::GLOBAL,
+    );
     println!(
         "{} {} {}",
         allele.species.scientific_name().to_string().purple(),
@@ -637,14 +625,14 @@ fn display_germline(allele: Allele, args: &Cli) {
     );
 }
 
-fn align(
-    seq_a: LinearPeptide,
-    seq_b: LinearPeptide,
+fn align<'a>(
+    seq_a: &'a LinearPeptide,
+    seq_b: &'a LinearPeptide,
     tolerance: Tolerance,
     ty: AlignType,
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     kind: AlignmentKind,
-) -> Alignment {
+) -> RefAlignment<'a> {
     if kind.normal {
         rustyms::align::align::<1>(seq_a, seq_b, matrix, tolerance, ty)
     } else if kind.mass_based_huge {
@@ -657,7 +645,7 @@ fn align(
 }
 
 fn consecutive_align(
-    seq: LinearPeptide,
+    seq: &LinearPeptide,
     species: Option<HashSet<imgt_germlines::Species>>,
     chains: Option<HashSet<imgt_germlines::ChainType>>,
     allele: imgt_germlines::AlleleSelection,
@@ -665,7 +653,7 @@ fn consecutive_align(
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     return_number: usize,
     kind: AlignmentKind,
-) -> Vec<Vec<(Allele<'static>, Alignment)>> {
+) -> Vec<Vec<(Allele<'static>, OwnedAlignment)>> {
     if kind.normal {
         par_consecutive_align::<1>(
             seq,

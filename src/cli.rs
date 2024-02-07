@@ -363,10 +363,9 @@ fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
     }
 }
 fn peptide_parser(input: &str) -> Result<LinearPeptide, String> {
-    Ok(ComplexPeptide::pro_forma(input)
-        .map_err(|e| e.to_string())?
-        .singular().expect("Expected a singular peptide, but a chimeric peptide was supplied")
-        .assume_simple())
+    let pep = LinearPeptide::pro_forma(input).map_err(|e| e.to_string())?;
+    pep.assume_simple();
+    Ok(pep)
 }
 fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
     input

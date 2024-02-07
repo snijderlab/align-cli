@@ -45,9 +45,9 @@ dependencies = [
 
 [[package]]
 name = "anstyle"
-version = "1.0.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2faccea4cc4ab4a667ce676a30e8ec13922a692c99bb8f5b11f1502c72e04220"
+checksum = "8901269c6307e8d93993578286ac0edf7f195079ffff5ebdeea6a59ffb7e36bc"
 
 [[package]]
 name = "anstyle-parse"
@@ -213,11 +213,10 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 [[package]]
 name = "imgt-germlines"
 version = "0.1.0"
-source = "git+https://github.com/snijderlab/imgt-germlines#5fa4ccc64b622eb2d164b31d8c42d85b3cc11b70"
+source = "git+https://github.com/snijderlab/imgt-germlines#1d7cc35bec2f0d4afca17c34ecdce36903f9fd1d"
 dependencies = [
  "bincode",
  "itertools",
- "ordered-float",
  "rayon",
  "rustyms",
  "serde",
@@ -405,7 +404,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "rustyms"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#44421655aeb9a6c871265f3b6713c07362aa357c"
+source = "git+https://github.com/snijderlab/rustyms#cac82b17e9f8302d7d9d18e89b0988922c6fd714"
 dependencies = [
  "bincode",
  "flate2",

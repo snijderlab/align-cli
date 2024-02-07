@@ -21,7 +21,7 @@ enum StepType {
 }
 
 pub fn show_annotated_mass_alignment(
-    alignment: &rustyms::align::Alignment,
+    alignment: &impl rustyms::align::Alignment,
     tolerance: Tolerance,
     imgt: Option<&Allele>,
     line_width: usize,
@@ -50,7 +50,7 @@ pub fn show_annotated_mass_alignment(
 }
 
 pub fn show_chained_annotated_mass_alignment(
-    alignments: &[(Allele, rustyms::align::Alignment)],
+    alignments: &[(Allele, impl rustyms::align::Alignment)],
     tolerance: Tolerance,
     line_width: usize,
     context: bool,
@@ -67,7 +67,7 @@ pub fn show_chained_annotated_mass_alignment(
             (alignment.0.name(), "Query"),
             Some(start),
         );
-        start += alignment.1.len_b() + alignment.1.start_b;
+        start += alignment.1.len_b() + alignment.1.start_b();
     }
 
     let mut writer = CombinedLines::new(line_width, false, "Query");
@@ -90,7 +90,7 @@ pub fn show_chained_annotated_mass_alignment(
 
 fn show_alignment_inner(
     writer: &mut CombinedLines,
-    alignment: &rustyms::align::Alignment,
+    alignment: &impl rustyms::align::Alignment,
     imgt: Option<&Allele>,
     context: bool,
     start_context_override: Option<Region>,
@@ -98,8 +98,7 @@ fn show_alignment_inner(
     number_tail: String,
     a_name: String,
 ) -> (String, Option<Region>) {
-    let mut a = alignment.start_a;
-    let mut b = alignment.start_b;
+    let (mut a, mut b) = alignment.start();
     const NUMBER_GAP: usize = 10;
     let mut number_shift_back = 1;
     let mut number_tail = number_tail;
@@ -156,9 +155,9 @@ fn show_alignment_inner(
     };
     // Start context
     if context || start_context_override.is_some() {
-        let prefix = alignment.start_a.max(alignment.start_b);
-        let shift_a = prefix - alignment.start_a;
-        let shift_b = prefix - alignment.start_b;
+        let prefix = alignment.start_a().max(alignment.start_b());
+        let shift_a = prefix - alignment.start_a();
+        let shift_b = prefix - alignment.start_b();
 
         for index in 0..prefix {
             let a_index = (index >= shift_a).then_some(index.saturating_sub(shift_a));
@@ -185,18 +184,18 @@ fn show_alignment_inner(
                 start_context_override.and_then(|r| r.bg_color()),
                 (number_tail.pop().unwrap_or(' '), base_style.clone()),
                 (
-                    a_index.map_or(' ', |a| alignment.seq_a.sequence[a].aminoacid.char()),
+                    a_index.map_or(' ', |a| alignment.seq_a().sequence[a].aminoacid.char()),
                     base_style.clone().maybe_style(a_index.and_then(|a| {
-                        alignment.seq_a.sequence[a..a + 1]
+                        alignment.seq_a().sequence[a..a + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
                     })),
                 ),
                 (
-                    b_index.map_or(' ', |b| alignment.seq_b.sequence[b].aminoacid.char()),
+                    b_index.map_or(' ', |b| alignment.seq_b().sequence[b].aminoacid.char()),
                     base_style.clone().maybe_style(b_index.and_then(|b| {
-                        alignment.seq_b.sequence[b..b + 1]
+                        alignment.seq_b().sequence[b..b + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
@@ -207,7 +206,7 @@ fn show_alignment_inner(
         }
     }
     // Actual alignment / middle
-    for (index, step) in alignment.path.iter().enumerate() {
+    for (index, step) in alignment.path().iter().enumerate() {
         let ty = match (step.match_type, step.step_a, step.step_b) {
             (MatchType::Isobaric, _, _) => StepType::Special, // Catch any 1/1 isobaric sets before they are counted as Match/Mismatch
             (MatchType::FullIdentity, _, _) => StepType::Match,
@@ -231,12 +230,12 @@ fn show_alignment_inner(
         let mut state = 0;
         (number_tail, is_number, number_shift_back) = header(
             a,
-            alignment.path[index..]
+            alignment.path()[index..]
                 .iter()
                 .map(|a| a.step_a as usize)
                 .sum::<usize>(),
             alignment
-                .path
+                .path()
                 .iter()
                 .skip(index)
                 .take_while(|s| {
@@ -258,7 +257,7 @@ fn show_alignment_inner(
         } else {
             format!(
                 "{:·<width$}",
-                alignment.seq_a.sequence[a..a + step.step_a as usize]
+                alignment.seq_a()[a..a + step.step_a as usize]
                     .iter()
                     .map(|a| a.aminoacid.char())
                     .collect::<String>(),
@@ -272,7 +271,7 @@ fn show_alignment_inner(
         } else {
             format!(
                 "{:·<width$}",
-                alignment.seq_b.sequence[b..b + step.step_b as usize]
+                alignment.seq_b()[b..b + step.step_b as usize]
                     .iter()
                     .map(|a| a.aminoacid.char())
                     .collect::<String>(),
@@ -310,7 +309,7 @@ fn show_alignment_inner(
                         .fg(imgt
                             .and_then(|imgt| imgt.annotations(a).next().and_then(|a| a.fg_color())))
                         .maybe_style(
-                            (alignment.seq_a.sequence[a..a + step.step_a as usize]
+                            (alignment.seq_a()[a..a + step.step_a as usize]
                                 .iter()
                                 .any(|a| !a.modifications.is_empty()))
                             .then_some(Styles::Underline),
@@ -319,7 +318,7 @@ fn show_alignment_inner(
                 (
                     b_str[s],
                     Styling::none().maybe_style(
-                        (alignment.seq_b.sequence[b..b + step.step_b as usize]
+                        (alignment.seq_b()[b..b + step.step_b as usize]
                             .iter()
                             .any(|a| !a.modifications.is_empty()))
                         .then_some(Styles::Underline),
@@ -333,11 +332,11 @@ fn show_alignment_inner(
     }
     // End context
     if context {
-        let len = (alignment.seq_a.len() - a).max(alignment.seq_b.len() - b);
+        let len = (alignment.seq_a().len() - a).max(alignment.seq_b().len() - b);
 
         for index in 0..len {
-            let a_index = (a + index < alignment.seq_a.len()).then_some(a + index);
-            let b_index = (b + index < alignment.seq_b.len()).then_some(b + index);
+            let a_index = (a + index < alignment.seq_a().len()).then_some(a + index);
+            let b_index = (b + index < alignment.seq_b().len()).then_some(b + index);
             (number_tail, is_number, number_shift_back) = header(
                 a_index.unwrap_or_default(),
                 len - index,
@@ -360,18 +359,18 @@ fn show_alignment_inner(
                     Styling::with_style(Styles::Dimmed),
                 ),
                 (
-                    a_index.map_or(' ', |a| alignment.seq_a.sequence[a].aminoacid.char()),
+                    a_index.map_or(' ', |a| alignment.seq_a()[a].aminoacid.char()),
                     Styling::with_style(Styles::Dimmed).maybe_style(a_index.and_then(|a| {
-                        alignment.seq_a.sequence[a..a + 1]
+                        alignment.seq_a()[a..a + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
                     })),
                 ),
                 (
-                    b_index.map_or(' ', |b| alignment.seq_b.sequence[b].aminoacid.char()),
+                    b_index.map_or(' ', |b| alignment.seq_b()[b].aminoacid.char()),
                     Styling::with_style(Styles::Dimmed).maybe_style(b_index.and_then(|b| {
-                        alignment.seq_b.sequence[b..b + 1]
+                        alignment.seq_b()[b..b + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
@@ -385,12 +384,13 @@ fn show_alignment_inner(
 }
 
 pub fn show_alignment_header(
-    alignment: &rustyms::align::Alignment,
+    alignment: &impl rustyms::align::Alignment,
     tolerance: Tolerance,
     names: (impl Display, impl Display),
     additional_b_start: Option<usize>,
 ) {
     let (identical, mass_similar, similar, gap, length) = alignment.stats();
+    let (normalised, absolute, maximal) = alignment.score();
     println!(
         "Identity: {} {}, Mass similarity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
@@ -401,8 +401,8 @@ pub fn show_alignment_header(
         format!("({}/{})", similar, length).dimmed(),
         format!("{:.3}", gap as f64 / length as f64).cyan(),
         format!("({}/{})", gap, length).dimmed(),
-        format!("{:.3}", alignment.normalised_score).green(),
-        format!("({}/{})", alignment.absolute_score, alignment.maximal_score).dimmed(),
+        format!("{:.3}", normalised).green(),
+        format!("({}/{})", absolute, maximal).dimmed(),
         if alignment
         .mass_difference().value==0.0 {
             "Equal mass".yellow().to_string()
@@ -415,15 +415,15 @@ pub fn show_alignment_header(
                 unit,)
         },
         names.0,
-        alignment.start_a.to_string().magenta(),
+        alignment.start_a().to_string().magenta(),
         names.1,
-        (additional_b_start.unwrap_or_default() + alignment.start_b).to_string().magenta(),
+        (additional_b_start.unwrap_or_default() + alignment.start_b()).to_string().magenta(),
         alignment.short().dimmed(),
         {
             format!("Tolerance: {tolerance}, Alignment: {} ({}), Maximal isobaric step: {}",
-            alignment.ty.description(),
-            alignment.ty.symbol(),
-            alignment.maximal_step).dimmed()
+            alignment.align_type().description(),
+            alignment.align_type().symbol(),
+            alignment.max_step()).dimmed()
         },
     );
 }
