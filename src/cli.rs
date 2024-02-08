@@ -3,7 +3,7 @@ use imgt_germlines::{AlleleSelection, Gene, GeneType, ChainType, Selection, Spec
 use rustyms::{
     modification::ReturnModification,
     placement_rule::*,
-    AminoAcid,  ComplexPeptide, LinearPeptide, Tolerance, Modification, align::{AlignType, self},
+    AminoAcid,  LinearPeptide, Tolerance, Modification, align::{AlignType, self},
 };
 use std::{collections::HashSet, fmt::Display};
 
