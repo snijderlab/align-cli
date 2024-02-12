@@ -404,7 +404,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "rustyms"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#cac82b17e9f8302d7d9d18e89b0988922c6fd714"
+source = "git+https://github.com/snijderlab/rustyms#155644393e9d21f2c0181faba189d9345b3c2525"
 dependencies = [
  "bincode",
  "flate2",
@@ -413,6 +413,7 @@ dependencies = [
  "probability",
  "regex",
  "serde",
+ "similar",
  "uom",
 ]
 
@@ -435,6 +436,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "similar"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32fea41aca09ee824cc9724996433064c89f7777e60762749a4170a14abbfa21"
 
 [[package]]
 name = "special"

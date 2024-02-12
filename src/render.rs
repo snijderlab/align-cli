@@ -390,7 +390,7 @@ pub fn show_alignment_header(
     additional_b_start: Option<usize>,
 ) {
     let (identical, mass_similar, similar, gap, length) = alignment.stats();
-    let (normalised, absolute, maximal) = alignment.score();
+    let (normalised, absolute, maximal) = alignment.scores();
     println!(
         "Identity: {} {}, Mass similarity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
         format!("{:.3}", identical as f64 / length as f64).bright_blue(),
@@ -410,7 +410,7 @@ pub fn show_alignment_header(
             let (num, unit) = relative_notation(alignment.ppm(), 3);
             format!("{} {}", num.yellow(), unit);
             format!("Mass difference: {} {} {}",
-                display_mass(alignment.mass_difference()),
+                display_mass(alignment.mass_difference(), true),
                 num.yellow(),
                 unit,)
         },
@@ -588,11 +588,15 @@ pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styl
     line("╰", "┴", "╯");
 }
 
-pub fn display_mass(value: Mass) -> String {
+pub fn display_mass(value: Mass, colour: bool) -> String {
     let (num, suf) = engineering_notation(value.value, 3);
     format!(
         "{} {}Da",
-        num.yellow(),
+        if colour {
+            num.yellow().to_string()
+        } else {
+            num.to_string()
+        },
         suf.map_or(String::new(), |s| s.to_string())
     )
 }

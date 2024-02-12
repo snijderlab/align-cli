@@ -4,7 +4,10 @@ use imgt_germlines::{par_consecutive_align, Allele, GeneType};
 use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::{
-    align::*, find_isobaric_sets, modification::GnoComposition, ontologies::*, placement_rule::*,
+    align::*,
+    find_isobaric_sets,
+    modification::{GnoComposition, Ontology},
+    placement_rule::*,
     AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassComparable, Modification,
     MolecularFormula, Multi, MultiChemical, Tolerance,
 };
@@ -80,7 +83,7 @@ fn main() {
             data.push([
                 (rank + 1).to_string(),
                 fasta.id.clone(),
-                alignment.score().1.to_string(),
+                alignment.scores().1.to_string(),
                 format!("{:.3}", alignment.normalised_score()),
                 format!("{:.2}%", stats.0 as f64 / stats.3 as f64 * 100.0),
                 format!("{:.2}%", stats.1 as f64 / stats.3 as f64 * 100.0),
@@ -151,7 +154,7 @@ fn main() {
                 imgt.species.scientific_name().to_string(),
                 imgt.name(),
                 imgt.fancy_name(),
-                alignment.score().1.to_string(),
+                alignment.scores().1.to_string(),
                 format!("{:.3}", alignment.normalised_score()),
                 format!("{:.3}", stats.0 as f64 / stats.3 as f64),
                 format!("{:.3}", stats.1 as f64 / stats.3 as f64),
@@ -222,7 +225,7 @@ fn main() {
                     imgt.species.scientific_name().to_string(),
                     imgt.name(),
                     imgt.fancy_name(),
-                    alignment.score().1.to_string(),
+                    alignment.scores().1.to_string(),
                     format!("{:.3}", alignment.normalised_score()),
                     format!("{:.3}", stats.0 as f64 / stats.3 as f64),
                     format!("{:.3}", stats.1 as f64 / stats.3 as f64),
@@ -324,7 +327,7 @@ fn main() {
                 args.alignment_kind,
             );
             let stats = alignment.stats();
-            let scores = alignment.score();
+            let scores = alignment.scores();
             writeln!(
                 writer,
                 "{},{},{},{},{},{},{},{},{}",
@@ -458,8 +461,8 @@ fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix:
     for formula in formulas.iter() {
         let row = (
             formula.hill_notation_fancy().green(),
-            display_mass(formula.monoisotopic_mass()),
-            display_mass(formula.average_weight()),
+            display_mass(formula.monoisotopic_mass(), true),
+            display_mass(formula.average_weight(), true),
         );
         lengths = (
             lengths.0.max(row.0.chars().count()),
@@ -475,8 +478,8 @@ fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix:
         print!(
             "{:3$} {:4$} {:5$}",
             formula.hill_notation_fancy().green(),
-            display_mass(formula.monoisotopic_mass()),
-            display_mass(formula.average_weight()),
+            display_mass(formula.monoisotopic_mass(), true),
+            display_mass(formula.average_weight(), true),
             lengths.0,
             lengths.1,
             lengths.2,
@@ -507,29 +510,79 @@ fn modification_stats(modification: &Modification, tolerance: Tolerance) {
             "All ontology modifications close to the given monoisotopic mass: {}",
             format!("tolerance: {tolerance}").dimmed()
         );
-        for (_, _, modification) in rustyms::ontologies::unimod_ontology()
-            .iter()
-            .chain(rustyms::ontologies::psimod_ontology())
-            .chain(rustyms::ontologies::gnome_ontology())
-        {
-            if tolerance.within(
-                &mass.into_inner(),
-                &modification.formula().monoisotopic_mass(),
-            ) {
-                println!(
-                    "{} {} {}",
-                    modification.to_string().purple(),
-                    display_mass(modification.formula().monoisotopic_mass()),
-                    modification.formula().hill_notation_fancy().green(),
-                );
+        let mut data = vec![[
+            "Name".to_string(),
+            "Id".to_string(),
+            "Monoisotopic mass".to_string(),
+            "Formula".to_string(),
+        ]];
+        for ontology in &[Ontology::Unimod, Ontology::Psimod, Ontology::Gnome] {
+            for (id, _, modification) in ontology.lookup() {
+                if tolerance.within(
+                    &mass.into_inner(),
+                    &modification.formula().monoisotopic_mass(),
+                ) {
+                    data.push([
+                        modification.to_string(),
+                        format!("{}:{}", ontology.name(), id),
+                        display_mass(modification.formula().monoisotopic_mass(), false),
+                        modification.formula().hill_notation_fancy(),
+                    ])
+                }
             }
+        }
+        if data.len() > 1 {
+            table(
+                &data,
+                true,
+                &[
+                    Styling::with_fg(Some(Color::Magenta)),
+                    Styling::with_style(Styles::Dimmed),
+                    Styling::with_fg(Some(Color::Yellow)),
+                    Styling::with_fg(Some(Color::Green)),
+                ],
+            );
+        } else {
+            println!("{}", "No modifications found".red())
+        }
+    } else if let Modification::Formula(formula) = modification {
+        println!(
+            "Full mass: {} {} {}\n",
+            display_mass(formula.monoisotopic_mass(), true),
+            display_mass(formula.average_weight(), true),
+            "(monoisotopic | average)".dimmed(),
+        );
+
+        println!("All ontology modifications with the same formula:");
+        let mut data = vec![["Name".to_string(), "Id".to_string()]];
+        for ontology in &[Ontology::Unimod, Ontology::Psimod, Ontology::Gnome] {
+            for (id, _, modification) in ontology.lookup() {
+                if modification.formula() == *formula {
+                    data.push([
+                        modification.to_string(),
+                        format!("{}:{}", ontology.name(), id),
+                    ])
+                }
+            }
+        }
+        if data.len() > 1 {
+            table(
+                &data,
+                true,
+                &[
+                    Styling::with_fg(Some(Color::Magenta)),
+                    Styling::with_style(Styles::Dimmed),
+                ],
+            );
+        } else {
+            println!("{}", "No modifications found".red())
         }
     } else {
         let monoisotopic = modification.formula().monoisotopic_mass();
         println!(
-            "Full mass: {} | {}  {}",
-            display_mass(monoisotopic),
-            display_mass(modification.formula().average_weight()),
+            "Full mass: {} {} {}",
+            display_mass(monoisotopic, true),
+            display_mass(modification.formula().average_weight(), true),
             "(monoisotopic | average)".dimmed(),
         );
         println!(
@@ -552,7 +605,7 @@ fn modification_stats(modification: &Modification, tolerance: Tolerance) {
                         print!(
                             "{}{}@{}",
                             if first { "" } else { ", " },
-                            aa.iter().map(AminoAcid::char).collect::<String>().yellow(),
+                            aa.iter().map(|a| a.char()).collect::<String>().yellow(),
                             pos.to_string().green()
                         )
                     }
@@ -560,11 +613,7 @@ fn modification_stats(modification: &Modification, tolerance: Tolerance) {
                         print!(
                             "{}{}@{}",
                             if first { "" } else { ", " },
-                            psimod_ontology()
-                                .find_id(*index)
-                                .unwrap()
-                                .to_string()
-                                .blue(),
+                            Ontology::Psimod.find_id(*index).unwrap().to_string().blue(),
                             pos.to_string().green()
                         )
                     }
