@@ -17,7 +17,6 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive", "cargo"] }
 colored = "2"
 itertools = "0.12"
-imgt-germlines = { git = "https://github.com/snijderlab/imgt-germlines" }
 rayon = "1.8"
 rustyms = { git = "https://github.com/snijderlab/rustyms" }
 

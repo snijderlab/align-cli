@@ -1,11 +1,12 @@
 use colored::Color;
+use rustyms::imgt;
 
 pub trait Legend {
     fn fg_color(&self) -> Option<Color>;
     fn bg_color(&self) -> Option<Color>;
 }
 
-impl Legend for imgt_germlines::Annotation {
+impl Legend for imgt::Annotation {
     fn fg_color(&self) -> Option<Color> {
         Some(match self {
             Self::Cysteine1 => Color::Blue,
@@ -21,7 +22,7 @@ impl Legend for imgt_germlines::Annotation {
     }
 }
 
-impl Legend for imgt_germlines::Region {
+impl Legend for imgt::Region {
     fn fg_color(&self) -> Option<Color> {
         match self {
             Self::CDR1 | Self::CDR2 | Self::CDR3 => Some(Color::Black),

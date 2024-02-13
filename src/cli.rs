@@ -1,5 +1,5 @@
 use clap::{Args, Parser};
-use imgt_germlines::{AlleleSelection, Gene, GeneType, ChainType, Selection, Species};
+use rustyms::imgt::{AlleleSelection, Gene, GeneType, ChainType, Selection, Species};
 use rustyms::{
     modification::ReturnModification,
     placement_rule::*,

@@ -1,11 +1,12 @@
 use clap::Parser;
 use colored::{Color, Colorize, Styles};
-use imgt_germlines::{par_consecutive_align, Allele, GeneType};
+use imgt::{Allele, GeneType};
 use itertools::Itertools;
 use rayon::prelude::*;
+use rustyms::align::par_consecutive_align;
 use rustyms::{
     align::*,
-    find_isobaric_sets,
+    find_isobaric_sets, imgt,
     modification::{GnoComposition, Ontology},
     placement_rule::*,
     AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassComparable, Modification,
@@ -50,7 +51,7 @@ fn main() {
             ("A", "B"),
         );
     } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
-        let sequences = rustyms::identifications::FastaData::parse_file(path).unwrap();
+        let sequences = rustyms::identification::FastaData::parse_file(path).unwrap();
         let search_sequence = LinearPeptide::pro_forma(b).unwrap();
         let mut alignments: Vec<_> = sequences
             .into_par_iter()
@@ -257,7 +258,7 @@ fn main() {
     } else if let (Some(x), Some(IMGTSelection::Gene(species, gene, allele))) =
         (&args.a, &args.second.imgt)
     {
-        if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
+        if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
             let b = LinearPeptide::pro_forma(x).unwrap();
             let alignment = align(
                 allele.sequence,
@@ -290,7 +291,7 @@ fn main() {
     } else if let Some(modification) = &args.modification {
         modification_stats(modification, args.tolerance);
     } else if let Some(file) = &args.second.csv {
-        let csv = rustyms::identifications::csv::parse_csv(file, b',', None).unwrap();
+        let csv = rustyms::csv::parse_csv(file, b',', None).unwrap();
         let output = std::fs::File::create(
             Path::new(file).with_file_name(
                 Path::new(file)
@@ -344,7 +345,7 @@ fn main() {
             .unwrap();
         }
     } else if let Some(IMGTSelection::Gene(species, gene, allele)) = &args.second.imgt {
-        if let Some(allele) = imgt_germlines::get_germline(*species, gene.clone(), *allele) {
+        if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
             display_germline(allele, &args);
         } else {
             println!("Could not find specified germline")
@@ -691,9 +692,9 @@ fn align<'a>(
 
 fn consecutive_align(
     seq: &LinearPeptide,
-    species: Option<HashSet<imgt_germlines::Species>>,
-    chains: Option<HashSet<imgt_germlines::ChainType>>,
-    allele: imgt_germlines::AlleleSelection,
+    species: Option<HashSet<imgt::Species>>,
+    chains: Option<HashSet<imgt::ChainType>>,
+    allele: imgt::AlleleSelection,
     tolerance: Tolerance,
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     return_number: usize,

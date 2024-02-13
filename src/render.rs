@@ -1,6 +1,6 @@
 use colored::{Color, Colorize, Styles};
-use imgt_germlines::{Allele, Region};
 use itertools::Itertools;
+use rustyms::imgt::{Allele, Region};
 use rustyms::system::Mass;
 use rustyms::{align::MatchType, Tolerance};
 use std::cmp::Ordering;

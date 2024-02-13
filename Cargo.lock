@@ -23,7 +23,6 @@ version = "0.3.0"
 dependencies = [
  "clap",
  "colored",
- "imgt-germlines",
  "itertools",
  "rayon",
  "rustyms",
@@ -100,9 +99,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
-version = "4.4.18"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e578d6ec4194633722ccf9544794b71b1385c3c027efe0c55db226fc880865c"
+checksum = "80c21025abd42669a92efc996ef13cfb2c5c627858421ea58d5c3b331a6c134f"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -110,9 +109,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.4.18"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4df4df40ec50c46000231c914968278b1eb05098cf8f1b3a518a95030e71d1c7"
+checksum = "458bf1f341769dfcf849846f65dffdf9146daa56bcd2a47cb4e1de9915567c99"
 dependencies = [
  "anstream",
  "anstyle",
@@ -122,9 +121,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.4.7"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf9804afaaf59a91e75b022a30fb7229a7901f60c755489cc61c9b423b836442"
+checksum = "307bc0538d5f0f83b8248db3087aa92fe504e4691294d0c96c0eabc33f47ba47"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -134,9 +133,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
+checksum = "98cc8fbded0c607b7ba9dd60cd98df59af97e84d24e49c8557331cfc26d301ce"
 
 [[package]]
 name = "colorchoice"
@@ -156,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.3.2"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b540bd8bc810d3885c6ea91e2018302f68baba2129ab3e88f32389ee9370880d"
+checksum = "b3855a8a784b474f333699ef2bbca9db2c4a1f6d9088a90a2d25b1eb53111eaa"
 dependencies = [
  "cfg-if",
 ]
@@ -190,9 +189,9 @@ checksum = "248e3bacc7dc6baa3b21e405ee045c3047101a49145e7e9eca583ab4c2ca5345"
 
 [[package]]
 name = "either"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
+checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
 
 [[package]]
 name = "flate2"
@@ -209,18 +208,6 @@ name = "heck"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
-
-[[package]]
-name = "imgt-germlines"
-version = "0.1.0"
-source = "git+https://github.com/snijderlab/imgt-germlines#8fcf2fda3df439683ed9af79ecd7c4e69b2a45ab"
-dependencies = [
- "bincode",
- "itertools",
- "rayon",
- "rustyms",
- "serde",
-]
 
 [[package]]
 name = "itertools"
@@ -260,11 +247,10 @@ dependencies = [
 
 [[package]]
 name = "num-integer"
-version = "0.1.45"
+version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "225d3389fb3509a24c93f5c29eb6bde2586b98d9f016636dff58d7c6f7569cd9"
+checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
 dependencies = [
- "autocfg",
  "num-traits",
 ]
 
@@ -281,9 +267,9 @@ dependencies = [
 
 [[package]]
 name = "num-traits"
-version = "0.2.17"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39e3200413f237f41ab11ad6d161bc7239c84dcb631773ccd7de3dfe4b5c267c"
+checksum = "da0df0e5185db44f69b44f26786fe401b6c293d1907744beaa7fa62b2e5a517a"
 dependencies = [
  "autocfg",
 ]
@@ -404,7 +390,32 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "rustyms"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#155644393e9d21f2c0181faba189d9345b3c2525"
+source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+dependencies = [
+ "rustyms-align",
+ "rustyms-core",
+ "rustyms-identification",
+ "rustyms-imgt",
+]
+
+[[package]]
+name = "rustyms-align"
+version = "0.7.0"
+source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+dependencies = [
+ "itertools",
+ "ordered-float",
+ "rayon",
+ "rustyms-core",
+ "rustyms-imgt",
+ "serde",
+ "uom",
+]
+
+[[package]]
+name = "rustyms-core"
+version = "0.7.0"
+source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
 dependencies = [
  "bincode",
  "flate2",
@@ -415,6 +426,30 @@ dependencies = [
  "serde",
  "similar",
  "uom",
+]
+
+[[package]]
+name = "rustyms-identification"
+version = "0.7.0"
+source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+dependencies = [
+ "itertools",
+ "ordered-float",
+ "rustyms-core",
+ "serde",
+ "uom",
+]
+
+[[package]]
+name = "rustyms-imgt"
+version = "0.1.0"
+source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+dependencies = [
+ "bincode",
+ "itertools",
+ "rayon",
+ "rustyms-core",
+ "serde",
 ]
 
 [[package]]
@@ -454,9 +489,9 @@ dependencies = [
 
 [[package]]
 name = "strsim"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+checksum = "5ee073c9e4cd00e28217186dbe12796d692868f432bf2e97ee73bed0c56dfa01"
 
 [[package]]
 name = "syn"
