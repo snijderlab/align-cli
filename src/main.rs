@@ -84,11 +84,11 @@ fn main() {
             data.push([
                 (rank + 1).to_string(),
                 fasta.id.clone(),
-                alignment.scores().1.to_string(),
+                alignment.score().absolute.to_string(),
                 format!("{:.3}", alignment.normalised_score()),
-                format!("{:.2}%", stats.0 as f64 / stats.3 as f64 * 100.0),
-                format!("{:.2}%", stats.1 as f64 / stats.3 as f64 * 100.0),
-                format!("{:.2}%", stats.2 as f64 / stats.3 as f64 * 100.0),
+                format!("{:.2}%", stats.identity() * 100.0),
+                format!("{:.2}%", stats.mass_similarity() * 100.0),
+                format!("{:.2}%", stats.gaps_fraction() * 100.0),
             ]);
         }
         table(
@@ -155,11 +155,11 @@ fn main() {
                 imgt.species.scientific_name().to_string(),
                 imgt.name(),
                 imgt.fancy_name(),
-                alignment.scores().1.to_string(),
+                alignment.score().absolute.to_string(),
                 format!("{:.3}", alignment.normalised_score()),
-                format!("{:.3}", stats.0 as f64 / stats.3 as f64),
-                format!("{:.3}", stats.1 as f64 / stats.3 as f64),
-                format!("{:.3}", stats.2 as f64 / stats.3 as f64),
+                format!("{:.2}%", stats.identity() * 100.0),
+                format!("{:.2}%", stats.mass_similarity() * 100.0),
+                format!("{:.2}%", stats.gaps_fraction() * 100.0),
             ]);
         }
         table(
@@ -226,11 +226,11 @@ fn main() {
                     imgt.species.scientific_name().to_string(),
                     imgt.name(),
                     imgt.fancy_name(),
-                    alignment.scores().1.to_string(),
+                    alignment.score().absolute.to_string(),
                     format!("{:.3}", alignment.normalised_score()),
-                    format!("{:.3}", stats.0 as f64 / stats.3 as f64),
-                    format!("{:.3}", stats.1 as f64 / stats.3 as f64),
-                    format!("{:.3}", stats.2 as f64 / stats.3 as f64),
+                    format!("{:.2}%", stats.identity() * 100.0),
+                    format!("{:.2}%", stats.mass_similarity() * 100.0),
+                    format!("{:.2}%", stats.gaps_fraction() * 100.0),
                 ]);
             }
             table(
@@ -311,7 +311,7 @@ fn main() {
             if first {
                 writeln!(
                     writer,
-                    "{},path,score,absolute score,maximal score,identical,similar,gaps,length",
+                    "{},path,score,absolute score,maximal score,identical,mass similar,gaps,length",
                     line.headers().join(",")
                 )
                 .unwrap();
@@ -328,19 +328,19 @@ fn main() {
                 args.alignment_kind,
             );
             let stats = alignment.stats();
-            let scores = alignment.scores();
+            let score = alignment.score();
             writeln!(
                 writer,
                 "{},{},{},{},{},{},{},{},{}",
                 line.line(),
                 alignment.short(),
-                scores.0,
-                scores.1,
-                scores.2,
-                stats.0,
-                stats.1,
-                stats.2,
-                stats.3
+                score.normalised,
+                score.absolute,
+                score.max,
+                stats.identical,
+                stats.mass_similar,
+                stats.gaps,
+                stats.length
             )
             .unwrap();
         }

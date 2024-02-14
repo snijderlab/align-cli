@@ -390,7 +390,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "rustyms"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+source = "git+https://github.com/snijderlab/rustyms#514f84fec8b5f1d4725a54077a75448e25061a1a"
 dependencies = [
  "rustyms-align",
  "rustyms-core",
@@ -401,7 +401,7 @@ dependencies = [
 [[package]]
 name = "rustyms-align"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+source = "git+https://github.com/snijderlab/rustyms#514f84fec8b5f1d4725a54077a75448e25061a1a"
 dependencies = [
  "itertools",
  "ordered-float",
@@ -415,7 +415,7 @@ dependencies = [
 [[package]]
 name = "rustyms-core"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+source = "git+https://github.com/snijderlab/rustyms#514f84fec8b5f1d4725a54077a75448e25061a1a"
 dependencies = [
  "bincode",
  "flate2",
@@ -431,7 +431,7 @@ dependencies = [
 [[package]]
 name = "rustyms-identification"
 version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+source = "git+https://github.com/snijderlab/rustyms#514f84fec8b5f1d4725a54077a75448e25061a1a"
 dependencies = [
  "itertools",
  "ordered-float",
@@ -443,7 +443,7 @@ dependencies = [
 [[package]]
 name = "rustyms-imgt"
 version = "0.1.0"
-source = "git+https://github.com/snijderlab/rustyms#27b96d7031a4dae87c30d8c6ea9b069dfa876495"
+source = "git+https://github.com/snijderlab/rustyms#514f84fec8b5f1d4725a54077a75448e25061a1a"
 dependencies = [
  "bincode",
  "itertools",

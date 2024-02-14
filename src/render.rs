@@ -389,20 +389,20 @@ pub fn show_alignment_header(
     names: (impl Display, impl Display),
     additional_b_start: Option<usize>,
 ) {
-    let (identical, mass_similar, similar, gap, length) = alignment.stats();
-    let (normalised, absolute, maximal) = alignment.scores();
+    let stats = alignment.stats();
+    let score = alignment.score();
     println!(
         "Identity: {} {}, Mass similarity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
-        format!("{:.3}", identical as f64 / length as f64).bright_blue(),
-        format!("({}/{})", identical, length).dimmed(),
-        format!("{:.3}", mass_similar as f64 / length as f64).blue(),
-        format!("({}/{})", mass_similar, length).dimmed(),
-        format!("{:.3}", similar as f64 / length as f64).blue(),
-        format!("({}/{})", similar, length).dimmed(),
-        format!("{:.3}", gap as f64 / length as f64).cyan(),
-        format!("({}/{})", gap, length).dimmed(),
-        format!("{:.3}", normalised).green(),
-        format!("({}/{})", absolute, maximal).dimmed(),
+        format!("{:.3}", stats.identity()).bright_blue(),
+        format!("({}/{})", stats.identical, stats.length).dimmed(),
+        format!("{:.3}", stats.mass_similarity()).blue(),
+        format!("({}/{})", stats.mass_similar, stats.length).dimmed(),
+        format!("{:.3}", stats.similarity()).blue(),
+        format!("({}/{})", stats.similar, stats.length).dimmed(),
+        format!("{:.3}", stats.gaps_fraction()).cyan(),
+        format!("({}/{})", stats.gaps, stats.length).dimmed(),
+        format!("{:.3}", score.normalised).green(),
+        format!("({}/{})", score.absolute, score.max).dimmed(),
         if alignment
         .mass_difference().value==0.0 {
             "Equal mass".yellow().to_string()
