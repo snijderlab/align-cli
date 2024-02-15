@@ -1,10 +1,11 @@
 use clap::{Args, Parser};
-use rustyms::imgt::{AlleleSelection, Gene, GeneType, ChainType, Selection, Species};
+use rustyms::imgt::{AlleleSelection, Gene, GeneType, ChainType, Species};
 use rustyms::{
     modification::ReturnModification,
     placement_rule::*,
     AminoAcid,  LinearPeptide, Tolerance, Modification, align::{AlignType, self},
 };
+use std::str::FromStr;
 use std::{collections::HashSet, fmt::Display};
 
 #[derive(Parser, Debug)]
@@ -13,9 +14,9 @@ use std::{collections::HashSet, fmt::Display};
 
 1) Align two sequences `align <X> <Y>`, this shows the best alignment for these two sequences.
 
-2) Align a single peptide to the IMGT database, `align <X> --imgt <SELECTION>` in this way you can select either a specific germline or a search across the whole database.
+2) Align a single peptide to the IMGT database, `align <X> --imgt` or `align --specific-gene <GENE>` in this way you can select either a specific germline or a search across the whole database.
 
-3) Do an alignment of a single peptide/sequence against the V domain from IMGT, `align <X> --imgt 'domain&<SELECTION>'` in this way it will find the best match for the V gene and subsequently find the best match on the J gene for the same species, the behaviour is akin to IMGT DomainGapAlign.
+3) Do an alignment of a single peptide/sequence against the V domain from IMGT, `align <X> --domain` in this way it will find the best match for the V gene and subsequently find the best match on the J gene for the same species, the behaviour is akin to IMGT DomainGapAlign.
 
 4) Align a single peptide to a database `align <X> --file <FILE.fasta>`, this shows the scores for the best matches for this peptide alongside the alignment for the best match.
 
@@ -23,7 +24,7 @@ use std::{collections::HashSet, fmt::Display};
 
 6) Get information about a single modification, `align --modification <MODIFICATION>`, this shows basic properties, and if it is a mass shift, eg `+58.01`, it shows all modifications that have the same mass within the tolerance.
 
-7) Get the sequence of one or more germlines `align --imgt <SELECTION>`.")]
+7) Get the sequence of one or more germlines `align --imgt` or `align --specific-gene <GENE>`.")]
 pub struct Cli {
     /// First sequence
     #[arg()]
@@ -91,6 +92,46 @@ pub struct Cli {
     /// A modification you want details on, if it is a mass shift modification eg `+58.01` it will show all predefined modifications that are within the tolerance of this mass
     #[arg(short, long, value_parser=modification_parse, allow_hyphen_values=true)]
     pub modification: Option<Modification>,
+
+    /// The species selected for any IMGT based alignments, you can use either the common or scientific name for the species.
+    #[arg(long)]
+    pub species: Option<Species>,
+
+    /// The chains selected for any IMGT based alignments, you can use any number of H, K, L, and I.
+    #[arg(long, value_parser=chains_parser)]
+    pub chains: Option<HashSet<ChainType>>,
+
+    /// The genes selected for any IMGT based alignments, you can use any number of V, J, C, A, D, E, G, M, O, and T.
+    #[arg(long, value_parser=genes_parser)]
+    pub genes: Option<HashSet<GeneType>>,
+
+    /// The genes selected for any IMGT based alignments, you can use either 'all' or 'first'.
+    #[arg(long, value_parser=allele_parser, default_value = "first")]
+    pub allele: AlleleSelection,
+}
+
+fn chains_parser(value: &str) -> Result<HashSet<ChainType>, String> {
+    let mut set = HashSet::new();
+    for c in value.chars() {
+        set.insert(ChainType::from_str(c.to_string().as_str()).map_err(|()| format!("Not a valid chain type: {c}"))?);
+    }
+    Ok(set)
+}
+
+fn genes_parser(value: &str) -> Result<HashSet<GeneType>, String> {
+    let mut set = HashSet::new();
+    for c in value.chars() {
+        set.insert(GeneType::from_str(c.to_string().as_str()).map_err(|()| format!("Not a valid gene type: {c}"))?);
+    }
+    Ok(set)
+}
+
+fn allele_parser(value: &str) -> Result<AlleleSelection, String> {
+    match value.trim().to_lowercase().as_str() {
+        "all" => Ok(AlleleSelection::All),
+        "first" => Ok(AlleleSelection::First),
+        _ => Err(format!("Not a valid allele selection: {value}, use 'all' or 'first'."))
+    }   
 }
 
 #[test]
@@ -152,25 +193,25 @@ pub struct ScoringMatrix {
 impl ScoringMatrix {
     pub fn matrix(&self) -> &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER] {
         if self.blosum45 {
-            align::BLOSUM45
+            align::matrix::BLOSUM45
         } else if self.blosum50 {
-            align::BLOSUM50
+            align::matrix::BLOSUM50
         } else if self.blosum62 {
-            align::BLOSUM62
+            align::matrix::BLOSUM62
         } else if self.blosum80 {
-            align::BLOSUM80
+            align::matrix::BLOSUM80
         } else if self.blosum90 {
-            align::BLOSUM90
+            align::matrix::BLOSUM90
         } else if self.identity {
-            align::IDENTITY
+            align::matrix::IDENTITY
         } else if self.pam30 {
-            align::PAM30
+            align::matrix::PAM30
         } else if self.pam70 {
-            align::PAM70
+            align::matrix::PAM70
         } else if self.pam250 {
-            align::PAM250
+            align::matrix::PAM250
         } else {
-            align::BLOSUM62
+            align::matrix::BLOSUM62
         }
     }
 }
@@ -234,106 +275,23 @@ pub struct SecondSelection {
     #[arg(long)]
     pub csv: Option<String>,
 
-    /// Align against IMGT germline sequences. 
-    /// 
-    /// You can select either a specific germline using `species:<SPECIES>&<NAME>` with if needed the allele specified using `allele:<NUMBER>`, otherwise it defaults to the first allele. 
-    /// 
-    /// Or you can give a selection using `species:<SPECIES>`, `kind:<KIND>`, `segment:<SEGMENT>`, `allele:<all|first>`. 
-    /// Any of these criteria can be left out to select all of them, except for the allele, leaving that out will select only the first. Combine criteria using `&`.
-    #[arg(long, value_parser=imgt_selection_parse)]
-    pub imgt: Option<IMGTSelection>,
+    /// Align against IMGT germline sequences. Use species/chains/genes/allele to further specify the IMGT selection.
+    #[arg(long)]
+    pub imgt: bool,
+
+    /// Align against one specific IMGT gene, using species is required if this is used.
+    #[arg(long, value_parser=parse_specific_gene)]
+    pub specific_gene: Option<(Gene, Option<usize>)>,
+
+    /// Do a consecutive alignment against V-J-D (in that order) of the IMGT database. Use species/chains/genes/allele to further specify the IMGT selection.
+    #[arg(long)]
+    pub domain: bool,
 }
 
-#[derive(Debug, Clone)]
-pub enum IMGTSelection {
-    Gene(Species, Gene, Option<usize>),
-    Domain(Option<HashSet<Species>>, Option<HashSet<ChainType>>, AlleleSelection),
-    Search(Selection),
-}
-
-fn imgt_selection_parse(s: &str) -> Result<IMGTSelection, String> {
-    let species = s.split('&')
-        .find_map(|p| p.strip_prefix("species:"))
-        .map(|s| {
-            s.split(',')
-                .map(|s| {
-                    s.parse()
-                        .map_err(|()| format!("Not a recognised species: {s}"))
-                })
-                .collect::<Result<HashSet<Species>, String>>()
-        })
-        .transpose()?;
-    let chains = s.split('&')
-        .find_map(|p| p.strip_prefix("chain:"))
-        .map(|s| {
-            s.split(',')
-                .map(|s| {
-                    s.parse()
-                        .map_err(|()| format!("Not a recognised chain: {s}"))
-                })
-                .collect::<Result<HashSet<ChainType>, String>>()
-        })
-        .transpose()?;
-    let genes = s.split('&')
-        .find_map(|p| p.strip_prefix("gene:"))
-        .map(|s| {
-            s.split(',')
-                .map(|s| {
-                    s.parse()
-                        .map_err(|()| format!("Not a recognised gene: {s}"))
-                })
-                .collect::<Result<HashSet<GeneType>, String>>()
-        })
-        .transpose()?;
-    let name = s.split('&')
-        .find_map(|p| p.strip_prefix("name:"))
-        .or(s.split('&').find(|p| p.starts_with("IG") || p.starts_with("Ig")));
-
-    if let Some(name) = name {
-        let species = species
-            .ok_or("No species specified")?
-            .into_iter()
-            .collect::<Vec<_>>();
-        let allele = s.split('&')
-            .find_map(|p| p.strip_prefix("allele:"))
-            .and_then(|s| match s {
-                "first" => None,
-                other => Some(
-                    other
-                        .parse::<usize>()
-                        .map_err(|_| format!("Not a valid number for allele selection: {other}")),
-                ),
-            }).transpose()?;
-        if species.len() != 1 {
-            Err("You have to specify a single species for IMGT gene selection")?
-        } else {
-            Ok(IMGTSelection::Gene(
-                species[0],
-                Gene::from_imgt_name(name)?,
-                allele,
-            ))
-        }
-    } else {
-        let allele = s.split('&')
-            .find_map(|p| p.strip_prefix("allele:"))
-            .map(|s| match s {
-                "all" => Ok(AlleleSelection::All),
-                "first" => Ok(AlleleSelection::First),
-                err => Err(format!("Not a valid allele specification: {err}")),
-            })
-            .transpose()?
-            .unwrap_or(AlleleSelection::First);
-        if s.split('&').any(|s| s == "domain") {
-            Ok(IMGTSelection::Domain(species, chains, allele))
-        } else {
-            Ok(IMGTSelection::Search(Selection {
-                species,
-                chains,
-                genes,
-                allele,
-            }))
-        }
-    }
+fn parse_specific_gene(value: &str) -> Result<(Gene, Option<usize>), String> {
+    Gene::from_imgt_name_with_allele(value)
+        .map(|(g, a)| (g, Some(a)))
+        .or_else(|_| Gene::from_imgt_name(value).map(|g| (g, None)))
 }
 
 #[derive(Debug, Clone)]

@@ -4,6 +4,7 @@ use imgt::{Allele, GeneType};
 use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::align::par_consecutive_align;
+use rustyms::imgt::Selection;
 use rustyms::{
     align::*,
     find_isobaric_sets, imgt,
@@ -118,23 +119,27 @@ fn main() {
             false,
             (&selected[0].0.id, "Query"),
         );
-    } else if let (Some(x), Some(IMGTSelection::Search(selection))) = (&args.a, &args.second.imgt) {
+    } else if let (Some(x), true) = (&args.a, &args.second.imgt) {
         let seq_b = parse_peptide(x);
-        let mut alignments: Vec<_> = selection
-            .clone()
-            .par_germlines()
-            .map(|seq| {
-                let alignment = align(
-                    seq.sequence,
-                    &seq_b,
-                    args.tolerance,
-                    args.alignment_type.ty(),
-                    args.scoring_matrix.matrix(),
-                    args.alignment_kind,
-                );
-                (seq, alignment)
-            })
-            .collect();
+        let mut alignments: Vec<_> = Selection {
+            species: args.species.map(|s| HashSet::from([s])),
+            chains: args.chains,
+            genes: args.genes,
+            allele: args.allele,
+        }
+        .par_germlines()
+        .map(|seq| {
+            let alignment = align(
+                seq.sequence,
+                &seq_b,
+                args.tolerance,
+                args.alignment_type.ty(),
+                args.scoring_matrix.matrix(),
+                args.alignment_kind,
+            );
+            (seq, alignment)
+        })
+        .collect();
         alignments.sort_unstable_by(|a, b| b.1.cmp(&a.1));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
@@ -193,14 +198,12 @@ fn main() {
             false,
             (selected[0].0.name(), "Query"),
         );
-    } else if let (Some(x), Some(IMGTSelection::Domain(species, chains, allele))) =
-        (&args.a, &args.second.imgt)
-    {
+    } else if let (Some(x), true) = (&args.a, &args.second.domain) {
         let scores = consecutive_align(
             &LinearPeptide::pro_forma(x).unwrap(),
-            species.clone(),
-            chains.clone(),
-            allele.clone(),
+            args.species.map(|s| HashSet::from([s])),
+            args.chains.clone(),
+            args.allele.clone(),
             args.tolerance,
             args.scoring_matrix.matrix(),
             args.number_of_hits,
@@ -255,8 +258,8 @@ fn main() {
             .map(|options| options[0].clone())
             .collect_vec();
         show_chained_annotated_mass_alignment(&tops, args.tolerance, args.line_width, args.context);
-    } else if let (Some(x), Some(IMGTSelection::Gene(species, gene, allele))) =
-        (&args.a, &args.second.imgt)
+    } else if let (Some(x), Some((gene, allele)), Some(species)) =
+        (&args.a, &args.second.specific_gene, &args.species)
     {
         if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
             let b = LinearPeptide::pro_forma(x).unwrap();
@@ -344,15 +347,23 @@ fn main() {
             )
             .unwrap();
         }
-    } else if let Some(IMGTSelection::Gene(species, gene, allele)) = &args.second.imgt {
+    } else if let (Some((gene, allele)), Some(species)) =
+        (&args.second.specific_gene, &args.species)
+    {
         if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
             display_germline(allele, &args);
         } else {
             println!("Could not find specified germline")
         }
-    } else if let Some(IMGTSelection::Search(selection)) = &args.second.imgt {
+    } else if args.second.imgt {
         let mut first = true;
-        for allele in selection.clone().germlines() {
+        let selection = Selection {
+            species: args.species.map(|s| HashSet::from([s])),
+            chains: args.chains.clone(),
+            genes: args.genes.clone(),
+            allele: args.allele.clone(),
+        };
+        for allele in selection.germlines() {
             if !first {
                 println!();
             } else {
@@ -650,7 +661,7 @@ fn display_germline(allele: Allele, args: &Cli) {
     let alignment = rustyms::align::align::<1>(
         allele.sequence,
         allele.sequence,
-        rustyms::align::BLOSUM90,
+        rustyms::align::matrix::BLOSUM90,
         Tolerance::new_ppm(10.0),
         rustyms::align::AlignType::GLOBAL,
     );
