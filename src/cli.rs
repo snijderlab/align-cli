@@ -12,19 +12,22 @@ use std::{collections::HashSet, fmt::Display};
 #[command(author, version, about)]
 #[command(long_about = "It supports multiple use cases:
 
-1) Align two sequences `align <X> <Y>`, this shows the best alignment for these two sequences.
+1. Pairwise alignment
+   - Align two sequences `align <A> <B>`, this shows the best alignment for these two sequences.
+   - Align a single peptide to a database `align <A> --file <FILE.fasta>`.
+   - Align a single peptide to the IMGT database `align <A> --imgt`.
+   - Align a single peptide to the V-J-C domains in the IMGT database `align <A> --domain`.
+   - Align a single peptide to a specific gene in IMGT database `align <A> --specific-gene <GENE>`.
 
-2) Align a single peptide to the IMGT database, `align <X> --imgt` or `align --specific-gene <GENE>` in this way you can select either a specific germline or a search across the whole database.
+2. Get information about a single sequence `align <sequence>`, this shows many basic properties (like mass) and generates isobaric sequences to this sequence.
+   - Use `--fixed <MODIFICATIONS>` and `--variable <MODIFICATIONS>` to fine tune the generated isobaric sequences.
 
-3) Do an alignment of a single peptide/sequence against the V domain from IMGT, `align <X> --domain` in this way it will find the best match for the V gene and subsequently find the best match on the J gene for the same species, the behaviour is akin to IMGT DomainGapAlign.
+3. Get information about a single modification `align --modification <MODIFICATION>`.
+   - Use a full name to list its properties eg `--modification Oxidation`
+   - Use a formula to find all modifications with that formula eg `--modification Formula:O`
+   - Use a mass to find all modifications with that mass eg `--modification +15.995`
 
-4) Align a single peptide to a database `align <X> --file <FILE.fasta>`, this shows the scores for the best matches for this peptide alongside the alignment for the best match.
-
-5) Get information about a single sequence `align <sequence>`, this shows many basic properties (like mass) and generates isobaric sequences to this sequence.
-
-6) Get information about a single modification, `align --modification <MODIFICATION>`, this shows basic properties, and if it is a mass shift, eg `+58.01`, it shows all modifications that have the same mass within the tolerance.
-
-7) Get the sequence of one or more germlines `align --imgt` or `align --specific-gene <GENE>`.")]
+4. List IMGT genes `align --imgt` or `align --specific-gene <GENE>`.")]
 pub struct Cli {
     /// First sequence
     #[arg()]
@@ -237,8 +240,9 @@ pub struct AlignmentType {
     #[arg(short, long)]
     pub local: bool,
 
-    /// Specify the type fully. Use the full name eg `local` or `local_a`, shorthand `ea` (`extend a`) or `left` (`global left`), symbol `▝`, index `2`, or fully specify `0010`.
-    /// The alignment type has four places left & right for both a & b. Specifying it fully gives you left_a,left_b,right_a,right_b as a binary number, eg `1111` is `global` and `1010` is `global a`.
+    /// Specify the type fully. Specify each position as local `0` or global `1` in the following order: left A, left B, right A, right B. 
+    /// An either global can be specified by putting a hyphen on the left or right side, `-xx` is either global left, `xx-` is either global right, `--` is either global.
+    /// For example `1001` means global on left A and right B which will make peptide A extend peptide B.
     #[arg(long, value_parser=type_parser, allow_hyphen_values=true)]
     pub r#type: Option<AlignType>,
 }
