@@ -67,7 +67,7 @@ pub struct Cli {
 
     /// All possible fixed modifications that will be used in the isobaric sets generation, separated by commas `,`, commas can be
     /// escaped by wrapping the entire modification in square brackets `[..]`.
-    /// You can overwrite the default placement rules in the same was as for variable modifications.
+    /// You can overwrite the default placement rules in the same way as for variable modifications.
     #[arg(short = 'F', long, default_value_t = Modifications::None, value_parser=modifications_parse, allow_hyphen_values=true)]
     pub fixed: Modifications,
 

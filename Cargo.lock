@@ -417,8 +417,9 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 
 [[package]]
 name = "rustyms"
-version = "0.7.0"
-source = "git+https://github.com/snijderlab/rustyms#65f2c7e25d957dfc21aa6653d42757a5081d9894"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e357374e99aa850045916b470b2445d0a46bf486799f0d6bb1cfcf5df1f3819b"
 dependencies = [
  "bincode",
  "doc-cfg",
@@ -476,9 +477,9 @@ checksum = "5ee073c9e4cd00e28217186dbe12796d692868f432bf2e97ee73bed0c56dfa01"
 
 [[package]]
 name = "syn"
-version = "2.0.48"
+version = "2.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f3531638e407dfc0814761abb7c00a5b54992b849452a0646b7f65c9f770f3f"
+checksum = "915aea9e586f80826ee59f8453c1101f9d1c4b3964cd2460185ee8e299ada496"
 dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
