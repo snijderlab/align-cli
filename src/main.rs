@@ -715,9 +715,27 @@ fn consecutive_align(
         par_consecutive_align::<1>(
             seq,
             &[
-                (GeneType::V, AlignType::new(Some((true, true)), None)),
-                (GeneType::J, AlignType::new(Some((true, false)), None)),
-                (GeneType::C(None), AlignType::new(Some((true, true)), None)),
+                (
+                    GeneType::V,
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::J,
+                    AlignType {
+                        left: Side::Specified { a: true, b: false },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::C(None),
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
             ],
             species.clone(),
             chains.clone(),
@@ -730,9 +748,27 @@ fn consecutive_align(
         par_consecutive_align::<{ u16::MAX }>(
             seq,
             &[
-                (GeneType::V, AlignType::new(Some((true, true)), None)),
-                (GeneType::J, AlignType::new(Some((true, false)), None)),
-                (GeneType::C(None), AlignType::new(Some((true, true)), None)),
+                (
+                    GeneType::V,
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::J,
+                    AlignType {
+                        left: Side::Specified { a: true, b: false },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::C(None),
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
             ],
             species.clone(),
             chains.clone(),
@@ -745,9 +781,27 @@ fn consecutive_align(
         par_consecutive_align::<8>(
             seq,
             &[
-                (GeneType::V, AlignType::new(Some((true, true)), None)),
-                (GeneType::J, AlignType::new(Some((true, false)), None)),
-                (GeneType::C(None), AlignType::new(Some((true, true)), None)),
+                (
+                    GeneType::V,
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::J,
+                    AlignType {
+                        left: Side::Specified { a: true, b: false },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::C(None),
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
             ],
             species.clone(),
             chains.clone(),
@@ -760,9 +814,27 @@ fn consecutive_align(
         par_consecutive_align::<4>(
             seq,
             &[
-                (GeneType::V, AlignType::new(Some((true, true)), None)),
-                (GeneType::J, AlignType::new(Some((true, false)), None)),
-                (GeneType::C(None), AlignType::new(Some((true, true)), None)),
+                (
+                    GeneType::V,
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::J,
+                    AlignType {
+                        left: Side::Specified { a: true, b: false },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::C(None),
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
             ],
             species.clone(),
             chains.clone(),
