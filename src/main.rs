@@ -5,6 +5,8 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::align::par_consecutive_align;
 use rustyms::imgt::Selection;
+use rustyms::modification::ModificationSearchResult;
+use rustyms::system::mass;
 use rustyms::{
     align::*,
     find_isobaric_sets, imgt,
@@ -517,140 +519,154 @@ fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix:
 }
 
 fn modification_stats(modification: &Modification, tolerance: Tolerance) {
-    if let Modification::Mass(mass) = modification {
-        println!(
-            "All ontology modifications close to the given monoisotopic mass: {}",
-            format!("tolerance: {tolerance}").dimmed()
-        );
-        let mut data = vec![[
-            "Name".to_string(),
-            "Id".to_string(),
-            "Monoisotopic mass".to_string(),
-            "Formula".to_string(),
-        ]];
-        for ontology in &[Ontology::Unimod, Ontology::Psimod, Ontology::Gnome] {
-            for (id, _, modification) in ontology.lookup() {
-                if tolerance.within(
-                    &mass.into_inner(),
-                    &modification.formula().monoisotopic_mass(),
-                ) {
-                    data.push([
-                        modification.to_string(),
-                        format!("{}:{}", ontology.name(), id),
-                        display_mass(modification.formula().monoisotopic_mass(), false),
-                        modification.formula().hill_notation_fancy(),
-                    ])
-                }
-            }
-        }
-        if data.len() > 1 {
-            table(
-                &data,
-                true,
-                &[
-                    Styling::with_fg(Some(Color::Magenta)),
-                    Styling::with_style(Styles::Dimmed),
-                    Styling::with_fg(Some(Color::Yellow)),
-                    Styling::with_fg(Some(Color::Green)),
-                ],
-            );
-        } else {
-            println!("{}", "No modifications found".red())
-        }
-    } else if let Modification::Formula(formula) = modification {
-        println!(
-            "Full mass: {} {} {}\n",
-            display_mass(formula.monoisotopic_mass(), true),
-            display_mass(formula.average_weight(), true),
-            "(monoisotopic | average)".dimmed(),
-        );
-
-        println!("All ontology modifications with the same formula:");
-        let mut data = vec![["Name".to_string(), "Id".to_string()]];
-        for ontology in &[Ontology::Unimod, Ontology::Psimod, Ontology::Gnome] {
-            for (id, _, modification) in ontology.lookup() {
-                if modification.formula() == *formula {
-                    data.push([
-                        modification.to_string(),
-                        format!("{}:{}", ontology.name(), id),
-                    ])
-                }
-            }
-        }
-        if data.len() > 1 {
-            table(
-                &data,
-                true,
-                &[
-                    Styling::with_fg(Some(Color::Magenta)),
-                    Styling::with_style(Styles::Dimmed),
-                ],
-            );
-        } else {
-            println!("{}", "No modifications found".red())
-        }
-    } else {
-        let monoisotopic = modification.formula().monoisotopic_mass();
-        println!(
-            "Full mass: {} {} {}",
-            display_mass(monoisotopic, true),
-            display_mass(modification.formula().average_weight(), true),
-            "(monoisotopic | average)".dimmed(),
-        );
-        println!(
-            "Composition: {}",
-            modification.formula().hill_notation_fancy().green(),
-        );
-        if let Modification::Predefined(_, rules, ontology, name, index) = modification {
+    match Modification::search(modification, tolerance) {
+        ModificationSearchResult::Mass(_mass, tolerance, modifications) => {
             println!(
-                "Ontology: {}, name: {}, index: {}",
-                ontology.to_string().purple(),
-                name.green(),
-                index.to_string().blue()
+                "All ontology modifications close to the given monoisotopic mass: {}",
+                format!("tolerance: {tolerance}").dimmed()
             );
-            print!("Placement rules: ");
-
-            let mut first = true;
-            for rule in rules {
-                match rule {
-                    PlacementRule::AminoAcid(aa, pos) => {
-                        print!(
-                            "{}{}@{}",
-                            if first { "" } else { ", " },
-                            aa.iter().map(|a| a.char()).collect::<String>().yellow(),
-                            pos.to_string().green()
-                        )
-                    }
-                    PlacementRule::PsiModification(index, pos) => {
-                        print!(
-                            "{}{}@{}",
-                            if first { "" } else { ", " },
-                            Ontology::Psimod.find_id(*index).unwrap().to_string().blue(),
-                            pos.to_string().green()
-                        )
-                    }
-                    PlacementRule::Terminal(pos) => {
-                        print!(
-                            "{}{}",
-                            if first { "" } else { ", " },
-                            pos.to_string().green()
-                        )
-                    }
-                }
-                first = false;
+            let mut data = vec![[
+                "Name".to_string(),
+                "Id".to_string(),
+                "Monoisotopic mass".to_string(),
+                "Formula".to_string(),
+            ]];
+            for (ontology, id, _name, modification) in modifications {
+                data.push([
+                    modification.to_string(),
+                    format!("{}:{}", ontology.name(), id),
+                    display_mass(modification.formula().monoisotopic_mass(), false),
+                    modification.formula().hill_notation_fancy(),
+                ])
             }
-        } else if let Modification::Gno(composition, name) = modification {
+            if data.len() > 1 {
+                table(
+                    &data,
+                    true,
+                    &[
+                        Styling::with_fg(Some(Color::Magenta)),
+                        Styling::with_style(Styles::Dimmed),
+                        Styling::with_fg(Some(Color::Yellow)),
+                        Styling::with_fg(Some(Color::Green)),
+                    ],
+                );
+            } else {
+                println!("{}", "No modifications found".red())
+            }
+        }
+        ModificationSearchResult::Formula(formula, modifications) => {
             println!(
-                "Ontology: {}, name: {}",
-                "GNOme".to_string().purple(),
-                name.to_uppercase().green(),
+                "Full mass: {} {} {}\n",
+                display_mass(formula.monoisotopic_mass(), true),
+                display_mass(formula.average_weight(), true),
+                "(monoisotopic | average)".dimmed(),
             );
-            match composition {
-                GnoComposition::Mass(_) => {
-                    println!("Only mass known")
+
+            println!("All ontology modifications with the same formula:");
+            let mut data = vec![["Name".to_string(), "Id".to_string()]];
+            for (ontology, id, _name, modification) in modifications {
+                data.push([
+                    modification.to_string(),
+                    format!("{}:{}", ontology.name(), id),
+                ])
+            }
+            if data.len() > 1 {
+                table(
+                    &data,
+                    true,
+                    &[
+                        Styling::with_fg(Some(Color::Magenta)),
+                        Styling::with_style(Styles::Dimmed),
+                    ],
+                );
+            } else {
+                println!("{}", "No modifications found".red())
+            }
+        }
+        ModificationSearchResult::Glycan(_composition, modifications) => {
+            println!("All GNOme modifications with the same monosaccharide composition:");
+            let mut data = vec![["Name".to_string(), "Structure".to_string()]];
+            for (_ontology, _id, _name, modification) in modifications {
+                if let Modification::Gno(GnoComposition::Structure(structure), _) = &modification {
+                    data.push([modification.to_string(), structure.to_string()])
                 }
-                GnoComposition::Structure(structure) => {
-                    println!("Structure: {}", structure.to_string().green())
+            }
+            if data.len() > 1 {
+                table(
+                    &data,
+                    true,
+                    &[
+                        Styling::with_fg(Some(Color::Magenta)),
+                        Styling::with_style(Styles::Dimmed),
+                    ],
+                );
+            } else {
+                println!("{}", "No modifications found".red())
+            }
+        }
+        ModificationSearchResult::Single(modification) => {
+            let monoisotopic = modification.formula().monoisotopic_mass();
+            println!(
+                "Full mass: {} {} {}",
+                display_mass(monoisotopic, true),
+                display_mass(modification.formula().average_weight(), true),
+                "(monoisotopic | average)".dimmed(),
+            );
+            println!(
+                "Composition: {}",
+                modification.formula().hill_notation_fancy().green(),
+            );
+            if let Modification::Predefined(_, rules, ontology, name, index) = modification {
+                println!(
+                    "Ontology: {}, name: {}, index: {}",
+                    ontology.to_string().purple(),
+                    name.green(),
+                    index.to_string().blue()
+                );
+                print!("Placement rules: ");
+
+                let mut first = true;
+                for rule in rules {
+                    match rule {
+                        PlacementRule::AminoAcid(aa, pos) => {
+                            print!(
+                                "{}{}@{}",
+                                if first { "" } else { ", " },
+                                aa.iter().map(|a| a.char()).collect::<String>().yellow(),
+                                pos.to_string().green()
+                            )
+                        }
+                        PlacementRule::PsiModification(index, pos) => {
+                            print!(
+                                "{}{}@{}",
+                                if first { "" } else { ", " },
+                                Ontology::Psimod.find_id(index).unwrap().to_string().blue(),
+                                pos.to_string().green()
+                            )
+                        }
+                        PlacementRule::Terminal(pos) => {
+                            print!(
+                                "{}{}",
+                                if first { "" } else { ", " },
+                                pos.to_string().green()
+                            )
+                        }
+                    }
+                    first = false;
+                }
+            } else if let Modification::Gno(composition, name) = modification {
+                println!(
+                    "Ontology: {}, name: {}",
+                    "GNOme".to_string().purple(),
+                    name.to_uppercase().green(),
+                );
+                match composition {
+                    GnoComposition::Mass(_) => {
+                        println!("Only mass known")
+                    }
+                    GnoComposition::Structure(structure) => {
+                        println!("Structure: {}", structure.to_string().green())
+                    }
                 }
             }
         }
