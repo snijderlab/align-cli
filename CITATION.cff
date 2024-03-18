@@ -1,0 +1,28 @@
+title: Align Command Line Interface (align-cli)
+version: 0.4.0
+abstract: A CLI for pairwise alignment of sequences, using both normal and mass based alignment.
+authors:
+  - affiliation: Utrecht University
+    family-names: Schulte
+    given-names: Douwe
+    orcid: https://orcid.org/0000-0003-0594-0993
+  - affiliation: Utrecht University
+    family-names: Snijder
+    given-names: Joost
+    orcid: https://orcid.org/0000-0002-9310-8226
+cff-version: 1.2.0
+identifiers:
+  - description: Algorithm paper (preprint)
+    type: url
+    value: https://www.biorxiv.org/content/10.1101/2024.02.20.581155v1
+  - description: Repository
+    type: url
+    value: https://github.com/snijderlab/align-cli
+keywords:
+  - sequencing
+  - antibody
+  - mass-spectrometry
+  - de novo
+license: MIT OR Apache-2.0
+message: If you use this software, please cite it using these metadata.
+repository-code: https://github.com/snijderlab/stitch
