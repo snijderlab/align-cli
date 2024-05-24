@@ -1,9 +1,11 @@
 use clap::{Args, Parser};
 use rustyms::imgt::{AlleleSelection, Gene, GeneType, ChainType, Species};
+use rustyms::modification::SimpleModification;
+use rustyms::system::Mass;
+use rustyms::{ReturnModification, Simple};
 use rustyms::{
-    modification::ReturnModification,
     placement_rule::*,
-    AminoAcid,  LinearPeptide, Tolerance, Modification, align::{AlignType, self},
+    AminoAcid,  LinearPeptide, Tolerance, align::{AlignType, self},
 };
 use std::str::FromStr;
 use std::{collections::HashSet, fmt::Display};
@@ -82,19 +84,19 @@ pub struct Cli {
 
     /// The base to always include in generating isobaric sets. This is assumed to be a simple sequence (for details see rustyms::LinearPeptide::assume_simple).
     #[arg(long, value_parser=peptide_parser)]
-    pub include: Option<LinearPeptide>,
+    pub include: Option<LinearPeptide<Simple>>,
 
     /// Overrule the default set of amino acids used in the isobaric sequences generation. The default set has all amino acids with a defined mass (no I/L in favour of J, no B/Z/X, but with U/O included).
     #[arg(long, value_parser=amino_acids_parser)]
     pub amino_acids: Option<AminoAcids>,
 
     /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, eg `10.0ppm` or `2.3da`
-    #[arg(short, long, default_value_t = Tolerance::ppm(10.0.into()), value_parser=mass_tolerance_parse)]
-    pub tolerance: Tolerance,
+    #[arg(short, long, default_value_t = Tolerance::new_ppm(10.0.into()), value_parser=mass_tolerance_parse)]
+    pub tolerance: Tolerance<Mass>,
 
     /// A modification you want details on, if it is a mass shift modification eg `+58.01` it will show all predefined modifications that are within the tolerance of this mass
     #[arg(short, long, value_parser=modification_parse, allow_hyphen_values=true)]
-    pub modification: Option<Modification>,
+    pub modification: Option<SimpleModification>,
 
     /// The species selected for any IMGT based alignments, you can use either the common or scientific name for the species.
     #[arg(long)]
@@ -111,6 +113,10 @@ pub struct Cli {
     /// The genes selected for any IMGT based alignments, you can use either 'all' or 'first'.
     #[arg(long, value_parser=allele_parser, default_value = "first")]
     pub allele: AlleleSelection,
+
+    /// Show full mass precision according to floating point math instead of the normal capped number of digits
+    #[arg(long)]
+    pub full_number: bool,
 }
 
 fn chains_parser(value: &str) -> Result<HashSet<ChainType>, String> {
@@ -311,7 +317,7 @@ impl Display for IsobaricNumber {
         }
     }
 }
-fn mass_tolerance_parse(input: &str) -> Result<Tolerance, &'static str> {
+fn mass_tolerance_parse(input: &str) -> Result<Tolerance<Mass>, &'static str> {
     input.parse().map_err(|()| "Invalid tolerance parameter")
 }
 fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
@@ -324,10 +330,8 @@ fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
             .map_err(|_| "Invalid options parameter")
     }
 }
-fn peptide_parser(input: &str) -> Result<LinearPeptide, String> {
-    let pep = LinearPeptide::pro_forma(input).map_err(|e| e.to_string())?;
-    pep.assume_simple();
-    Ok(pep)
+fn peptide_parser(input: &str) -> Result<LinearPeptide<Simple>, String> {
+    LinearPeptide::pro_forma(input, None).map_err(|e| e.to_string())?.simple().ok_or("Not a simple peptide".to_string())
 }
 fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
     input
@@ -344,10 +348,10 @@ fn type_parser(input: &str) -> Result<AlignType, String> {
 #[derive(Debug, Clone)]
 pub enum Modifications {
     None,
-    Some(Vec<(Modification, Option<PlacementRule>)>),
+    Some(Vec<(SimpleModification, Option<PlacementRule>)>),
 }
 impl Modifications {
-    pub fn mods(&self) -> &[(Modification, Option<PlacementRule>)] {
+    pub fn mods(&self) -> &[(SimpleModification, Option<PlacementRule>)] {
         match self {
             Self::None => &[],
             Self::Some(m) => m,
@@ -445,7 +449,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
             .map(|m| {
                 if let Some((head, tail)) = m.split_once('@') {
                     let modification = 
-                    Modification::try_from(head, 0..head.len(), &mut Vec::new()).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
+                    SimpleModification::try_from(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
                         Ok(d) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
@@ -463,23 +467,23 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
                         };
                     Ok((modification, Some(rule)))
                 } else {
-                    Modification::try_from(m, 0..m.len(), &mut Vec::new()).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
+                    SimpleModification::try_from(m, 0..m.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
                         Ok((d, None)) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
                     )
                 }
                 })
-            .collect::<Result<Vec<(Modification, Option<PlacementRule>)>, String>>()
+            .collect::<Result<Vec<(SimpleModification, Option<PlacementRule>)>, String>>()
             .map(Modifications::Some)
     }
 }
 
-fn modification_parse(input: &str) -> Result<Modification, String> {
+fn modification_parse(input: &str) -> Result<SimpleModification, String> {
     if input.is_empty() {
         Err("Empty".to_string())
     } else {
-        Modification::try_from(input, 0..input.len(), &mut Vec::new())
+        SimpleModification::try_from(input, 0..input.len(), &mut Vec::new(), &mut Vec::new(), None)
             .map(|m| match m {
                 ReturnModification::Defined(d) => d,
                 _ => {

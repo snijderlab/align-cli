@@ -5,22 +5,26 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::align::par_consecutive_align;
 use rustyms::imgt::Selection;
-use rustyms::modification::ModificationSearchResult;
-use rustyms::system::mass;
+use rustyms::modification::{
+    LinkerSpecificity, ModificationId, ModificationSearchResult, SimpleModification,
+};
+use rustyms::system::Mass;
 use rustyms::{
     align::*,
     find_isobaric_sets, imgt,
     modification::{GnoComposition, Ontology},
     placement_rule::*,
-    AminoAcid, Chemical, ComplexPeptide, LinearPeptide, MassComparable, Modification,
-    MolecularFormula, Multi, MultiChemical, Tolerance,
+    AminoAcid, Chemical, LinearPeptide, MolecularFormula, Multi, Tolerance,
 };
+use rustyms::{ExtremelySimple, Linear, Simple};
 use std::{
     collections::HashSet,
     io::{BufWriter, Write},
     path::Path,
-    process::exit,
 };
+
+/// Define the default precision (in number of digits shown) for number output
+const NUMBER_PRECISION: usize = 3;
 
 mod cli;
 mod legend;
@@ -34,8 +38,8 @@ use styling::*;
 fn main() {
     let args = Cli::parse();
     if let (Some(a), Some(b)) = (&args.a, &args.second.b) {
-        let a = LinearPeptide::pro_forma(a).unwrap();
-        let b = LinearPeptide::pro_forma(b).unwrap();
+        let a = LinearPeptide::pro_forma(a, None).unwrap().simple().unwrap();
+        let b = LinearPeptide::pro_forma(b, None).unwrap().simple().unwrap();
         let alignment = align(
             &a,
             &b,
@@ -44,22 +48,15 @@ fn main() {
             args.scoring_matrix.matrix(),
             args.alignment_kind,
         );
-        show_annotated_mass_alignment(
-            &alignment,
-            args.tolerance,
-            None,
-            args.line_width,
-            args.context,
-            false,
-            ("A", "B"),
-        );
+        show_annotated_mass_alignment(&alignment, None, false, ("A", "B"), &args);
     } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
         let sequences = rustyms::identification::FastaData::parse_file(path).unwrap();
-        let search_sequence = LinearPeptide::pro_forma(b).unwrap();
+        let search_sequence = LinearPeptide::pro_forma(b, None).unwrap().simple().unwrap();
         let mut alignments: Vec<_> = sequences
             .into_par_iter()
             .map(|seq| {
-                let sequence = seq.peptide.sequence.iter().cloned().collect();
+                let sequence: LinearPeptide<Simple> =
+                    seq.peptide.sequence.iter().cloned().collect();
                 let alignment = align(
                     &sequence,
                     &search_sequence,
@@ -114,20 +111,18 @@ fn main() {
         );
         show_annotated_mass_alignment(
             &selected[0].1,
-            args.tolerance,
             None,
-            args.line_width,
-            args.context,
             false,
             (&selected[0].0.id, "Query"),
+            &args,
         );
     } else if let (Some(x), true) = (&args.a, &args.second.imgt) {
-        let seq_b = parse_peptide(x);
+        let seq_b = LinearPeptide::pro_forma(x, None).unwrap().simple().unwrap();
         let mut alignments: Vec<_> = Selection {
             species: args.species.map(|s| HashSet::from([s])),
-            chains: args.chains,
-            genes: args.genes,
-            allele: args.allele,
+            chains: args.chains.clone(),
+            genes: args.genes.clone(),
+            allele: args.allele.clone(),
         }
         .par_germlines()
         .map(|seq| {
@@ -142,7 +137,8 @@ fn main() {
             (seq, alignment)
         })
         .collect();
-        alignments.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        alignments
+            .sort_unstable_by(|a, b| b.1.score().normalised.total_cmp(&a.1.score().normalised));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
         let mut data = vec![[
             String::new(),
@@ -193,16 +189,14 @@ fn main() {
         );
         show_annotated_mass_alignment(
             &selected[0].1,
-            args.tolerance,
             Some(&selected[0].0),
-            args.line_width,
-            args.context,
             false,
             (selected[0].0.name(), "Query"),
+            &args,
         );
     } else if let (Some(x), true) = (&args.a, &args.second.domain) {
         let scores = consecutive_align(
-            &LinearPeptide::pro_forma(x).unwrap(),
+            &LinearPeptide::pro_forma(x, None).unwrap().simple().unwrap(),
             args.species.map(|s| HashSet::from([s])),
             args.chains.clone(),
             args.allele.clone(),
@@ -259,12 +253,18 @@ fn main() {
             .into_iter()
             .map(|options| options[0].clone())
             .collect_vec();
-        show_chained_annotated_mass_alignment(&tops, args.tolerance, args.line_width, args.context);
+        show_chained_annotated_mass_alignment(
+            &tops,
+            args.tolerance,
+            args.line_width,
+            args.context,
+            args.full_number,
+        );
     } else if let (Some(x), Some((gene, allele)), Some(species)) =
         (&args.a, &args.second.specific_gene, &args.species)
     {
         if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
-            let b = LinearPeptide::pro_forma(x).unwrap();
+            let b = LinearPeptide::pro_forma(x, None).unwrap().simple().unwrap();
             let alignment = align(
                 allele.sequence,
                 &b,
@@ -281,20 +281,21 @@ fn main() {
             );
             show_annotated_mass_alignment(
                 &alignment,
-                args.tolerance,
                 Some(&allele),
-                args.line_width,
-                args.context,
                 false,
                 (allele.name(), "Query"),
+                &args,
             );
         } else {
             println!("Could not find specified germline")
         }
     } else if let Some(x) = &args.a {
-        single_stats(&args, parse_peptide(x))
+        single_stats(
+            &args,
+            LinearPeptide::pro_forma(x, None).unwrap().simple().unwrap(),
+        )
     } else if let Some(modification) = &args.modification {
-        modification_stats(modification, args.tolerance);
+        modification_stats(modification, args.tolerance, args.full_number);
     } else if let Some(file) = &args.second.csv {
         let csv = rustyms::csv::parse_csv(file, b',', None).unwrap();
         let output = std::fs::File::create(
@@ -322,8 +323,14 @@ fn main() {
                 .unwrap();
                 first = false;
             }
-            let a = LinearPeptide::pro_forma(line.index_column("a").unwrap().0).unwrap();
-            let b = LinearPeptide::pro_forma(line.index_column("b").unwrap().0).unwrap();
+            let a = LinearPeptide::pro_forma(line.index_column("a").unwrap().0, None)
+                .unwrap()
+                .simple()
+                .unwrap();
+            let b = LinearPeptide::pro_forma(line.index_column("b").unwrap().0, None)
+                .unwrap()
+                .simple()
+                .unwrap();
             let alignment = align(
                 &a,
                 &b,
@@ -378,24 +385,16 @@ fn main() {
     }
 }
 
-/// Parses the peptide and assumes it to be linear or shows an error and exit
-fn parse_peptide(input: &str) -> LinearPeptide {
-    match ComplexPeptide::pro_forma(input) {
-        Ok(v) => v
-            .singular()
-            .expect("Expected a singular peptide but a chimeric peptide was supplied"),
-        Err(e) => {
-            println!("Peptide is not valid ProForma: {}", e);
-            exit(1);
-        }
-    }
-}
-
-fn single_stats(args: &Cli, seq: LinearPeptide) {
+fn single_stats(args: &Cli, seq: LinearPeptide<Simple>) {
     let full_formulas = seq.formulas().unique();
     let bare_formulas = seq.bare_formulas().unique();
-    print_multi_formula(&full_formulas, "Full", "");
-    print_multi_formula(&bare_formulas, "Bare", "no N/C terminal taken into account");
+    print_multi_formula(&full_formulas, "Full", "", args.full_number);
+    print_multi_formula(
+        &bare_formulas,
+        "Bare",
+        "no N/C terminal taken into account",
+        args.full_number,
+    );
     let multiple = full_formulas.len() > 1;
 
     let bare = seq
@@ -457,7 +456,17 @@ fn single_stats(args: &Cli, seq: LinearPeptide) {
     }
 }
 
-fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix: &str) {
+fn print_multi_formula(
+    formulas: &Multi<MolecularFormula>,
+    prefix: &str,
+    suffix: &str,
+    full_number: bool,
+) {
+    let precision = if full_number {
+        None
+    } else {
+        Some(NUMBER_PRECISION)
+    };
     let multiple = formulas.len() > 1;
     print!("{}: ", prefix);
     if multiple {
@@ -470,18 +479,20 @@ fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix:
             }
         )
     }
-    let mut lengths = (0, 0, 0);
+    let mut lengths = (0, 0, 0, 0);
     let mut rows = Vec::with_capacity(formulas.len());
     for formula in formulas.iter() {
         let row = (
             formula.hill_notation_fancy().green(),
-            display_mass(formula.monoisotopic_mass(), true),
-            display_mass(formula.average_weight(), true),
+            display_mass(formula.monoisotopic_mass(), true, precision),
+            display_mass(formula.average_weight(), true, precision),
+            display_mass(formula.most_abundant_mass(), true, precision),
         );
         lengths = (
             lengths.0.max(row.0.chars().count()),
             lengths.1.max(row.1.chars().count()),
             lengths.2.max(row.2.chars().count()),
+            lengths.3.max(row.3.chars().count()),
         );
         rows.push(row);
     }
@@ -490,13 +501,15 @@ fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix:
             print!("  ");
         }
         print!(
-            "{:3$} {:4$} {:5$}",
+            "{:4$} {:5$} {:6$} {:7$}",
             formula.hill_notation_fancy().green(),
-            display_mass(formula.monoisotopic_mass(), true),
-            display_mass(formula.average_weight(), true),
+            display_mass(formula.monoisotopic_mass(), true, precision),
+            display_mass(formula.average_weight(), true, precision),
+            display_mass(formula.most_abundant_mass(), true, precision),
             lengths.0,
             lengths.1,
             lengths.2,
+            lengths.3,
         );
         if multiple {
             println!();
@@ -509,7 +522,7 @@ fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix:
     }
     println!(
         "{}{}",
-        "(formula | monoisotopic mass | average weight)".dimmed(),
+        "(formula | monoisotopic mass | average weight | most abundant mass)".dimmed(),
         if suffix.is_empty() || multiple {
             String::new()
         } else {
@@ -518,8 +531,17 @@ fn print_multi_formula(formulas: &Multi<MolecularFormula>, prefix: &str, suffix:
     )
 }
 
-fn modification_stats(modification: &Modification, tolerance: Tolerance) {
-    match Modification::search(modification, tolerance) {
+fn modification_stats(
+    modification: &SimpleModification,
+    tolerance: Tolerance<Mass>,
+    full_number: bool,
+) {
+    let precision = if full_number {
+        None
+    } else {
+        Some(NUMBER_PRECISION)
+    };
+    match SimpleModification::search(modification, tolerance, None) {
         ModificationSearchResult::Mass(_mass, tolerance, modifications) => {
             println!(
                 "All ontology modifications close to the given monoisotopic mass: {}",
@@ -535,7 +557,7 @@ fn modification_stats(modification: &Modification, tolerance: Tolerance) {
                 data.push([
                     modification.to_string(),
                     format!("{}:{}", ontology.name(), id),
-                    display_mass(modification.formula().monoisotopic_mass(), false),
+                    display_mass(modification.formula().monoisotopic_mass(), false, precision),
                     modification.formula().hill_notation_fancy(),
                 ])
             }
@@ -557,8 +579,8 @@ fn modification_stats(modification: &Modification, tolerance: Tolerance) {
         ModificationSearchResult::Formula(formula, modifications) => {
             println!(
                 "Full mass: {} {} {}\n",
-                display_mass(formula.monoisotopic_mass(), true),
-                display_mass(formula.average_weight(), true),
+                display_mass(formula.monoisotopic_mass(), true, precision),
+                display_mass(formula.average_weight(), true, precision),
                 "(monoisotopic | average)".dimmed(),
             );
 
@@ -587,7 +609,9 @@ fn modification_stats(modification: &Modification, tolerance: Tolerance) {
             println!("All GNOme modifications with the same monosaccharide composition:");
             let mut data = vec![["Name".to_string(), "Structure".to_string()]];
             for (_ontology, _id, _name, modification) in modifications {
-                if let Modification::Gno(GnoComposition::Structure(structure), _) = &modification {
+                if let SimpleModification::Gno(GnoComposition::Structure(structure), _) =
+                    &modification
+                {
                     data.push([modification.to_string(), structure.to_string()])
                 }
             }
@@ -607,74 +631,207 @@ fn modification_stats(modification: &Modification, tolerance: Tolerance) {
         ModificationSearchResult::Single(modification) => {
             let monoisotopic = modification.formula().monoisotopic_mass();
             println!(
-                "Full mass: {} {} {}",
-                display_mass(monoisotopic, true),
-                display_mass(modification.formula().average_weight(), true),
-                "(monoisotopic | average)".dimmed(),
+                "Full mass: {} {} {} {}",
+                display_mass(monoisotopic, true, precision),
+                display_mass(modification.formula().average_weight(), true, precision),
+                display_mass(modification.formula().most_abundant_mass(), true, precision),
+                "(monoisotopic | average | most abundant)".dimmed(),
             );
-            println!(
-                "Composition: {}",
-                modification.formula().hill_notation_fancy().green(),
-            );
-            if let Modification::Predefined(_, rules, ontology, name, index) = modification {
+            if !modification.formula().is_empty() {
                 println!(
-                    "Ontology: {}, name: {}, index: {}",
-                    ontology.to_string().purple(),
-                    name.green(),
-                    index.to_string().blue()
+                    "Composition: {}",
+                    modification.formula().hill_notation_fancy().green(),
                 );
-                print!("Placement rules: ");
+            }
+            match modification {
+                SimpleModification::Database {
+                    specificities, id, ..
+                } => {
+                    display_id(&id);
+                    println!("Placement rules: ");
 
-                let mut first = true;
-                for rule in rules {
-                    match rule {
-                        PlacementRule::AminoAcid(aa, pos) => {
+                    for rule in specificities {
+                        print!("  Locations: ");
+                        // Print locations
+                        display_placement_rules(&rule.0);
+                        // Print neutral losses
+                        if !rule.1.is_empty() {
                             print!(
-                                "{}{}@{}",
-                                if first { "" } else { ", " },
-                                aa.iter().map(|a| a.char()).collect::<String>().yellow(),
-                                pos.to_string().green()
-                            )
+                                ", Neutral losses: {}",
+                                rule.1
+                                    .iter()
+                                    .map(|n| n.hill_notation_fancy().yellow())
+                                    .join(", ")
+                            );
                         }
-                        PlacementRule::PsiModification(index, pos) => {
+                        // Print diagnostic ions
+                        if !rule.2.is_empty() {
                             print!(
-                                "{}{}@{}",
-                                if first { "" } else { ", " },
-                                Ontology::Psimod.find_id(index).unwrap().to_string().blue(),
-                                pos.to_string().green()
-                            )
+                                ", Diagnostic ions: {}",
+                                rule.2
+                                    .iter()
+                                    .map(|d| d.0.hill_notation_fancy().green())
+                                    .join(", ")
+                            );
                         }
-                        PlacementRule::Terminal(pos) => {
-                            print!(
-                                "{}{}",
-                                if first { "" } else { ", " },
-                                pos.to_string().green()
-                            )
-                        }
-                    }
-                    first = false;
-                }
-            } else if let Modification::Gno(composition, name) = modification {
-                println!(
-                    "Ontology: {}, name: {}",
-                    "GNOme".to_string().purple(),
-                    name.to_uppercase().green(),
-                );
-                match composition {
-                    GnoComposition::Mass(_) => {
-                        println!("Only mass known")
-                    }
-                    GnoComposition::Structure(structure) => {
-                        println!("Structure: {}", structure.to_string().green())
+                        println!();
                     }
                 }
+                SimpleModification::Linker {
+                    specificities,
+                    id,
+                    length,
+                    ..
+                } => {
+                    display_id(&id);
+                    if let Some(length) = length {
+                        println!("Length: {}", length);
+                    }
+                    println!("Placement rules: ");
+                    for specificity in specificities {
+                        match specificity {
+                            LinkerSpecificity::Symmetric(locations, stubs, diagnostic) => {
+                                print!("  Locations: ");
+                                display_placement_rules(&locations);
+                                if !stubs.is_empty() {
+                                    print!(
+                                        ", Cleave points: {}",
+                                        stubs
+                                            .iter()
+                                            .map(|(a, b)| format!(
+                                                "{} + {}",
+                                                a.hill_notation_fancy().yellow(),
+                                                b.hill_notation_fancy().yellow()
+                                            ))
+                                            .join(", ")
+                                    );
+                                }
+                                if !diagnostic.is_empty() {
+                                    print!(
+                                        ", Diagnostic ions: {}",
+                                        diagnostic
+                                            .iter()
+                                            .map(|d| d.0.hill_notation_fancy().green())
+                                            .join(", ")
+                                    );
+                                }
+                            }
+                            LinkerSpecificity::Asymmetric(locations, stubs, diagnostic) => {
+                                print!("  Left: ");
+                                display_placement_rules(&locations.0);
+                                print!(", Right: ");
+                                display_placement_rules(&locations.1);
+
+                                if !stubs.is_empty() {
+                                    print!(
+                                        ", Cleave points: {}",
+                                        stubs
+                                            .iter()
+                                            .map(|(a, b)| format!(
+                                                "{} + {}",
+                                                a.hill_notation_fancy().yellow(),
+                                                b.hill_notation_fancy().yellow()
+                                            ))
+                                            .join(", ")
+                                    );
+                                }
+                                if !diagnostic.is_empty() {
+                                    print!(
+                                        ", Diagnostic ions: {}",
+                                        diagnostic
+                                            .iter()
+                                            .map(|d| d.0.hill_notation_fancy().green())
+                                            .join(", ")
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                SimpleModification::Gno(composition, name) => {
+                    println!(
+                        "Ontology: {}, name: {}",
+                        "GNOme".to_string().purple(),
+                        name.to_uppercase().green(),
+                    );
+                    match composition {
+                        GnoComposition::Mass(_) => {
+                            println!("Only mass known")
+                        }
+                        GnoComposition::Structure(structure) => {
+                            println!("Structure: {}", structure.to_string().green())
+                        }
+                    }
+                }
+                _ => (),
             }
         }
     }
 }
 
+fn display_placement_rules(rules: &[PlacementRule]) {
+    let mut first = true;
+    for rule in rules {
+        match rule {
+            PlacementRule::AminoAcid(aa, pos) => {
+                print!(
+                    "{}{}@{}",
+                    if first { "" } else { ", " },
+                    aa.iter().map(|a| a.char()).collect::<String>().yellow(),
+                    pos.to_string().green()
+                )
+            }
+            PlacementRule::PsiModification(index, pos) => {
+                print!(
+                    "{}{}@{}",
+                    if first { "" } else { ", " },
+                    Ontology::Psimod
+                        .find_id(*index, None)
+                        .unwrap()
+                        .to_string()
+                        .blue(),
+                    pos.to_string().green()
+                )
+            }
+            PlacementRule::Terminal(pos) => {
+                print!(
+                    "{}{}",
+                    if first { "" } else { ", " },
+                    pos.to_string().green()
+                )
+            }
+            PlacementRule::Anywhere => print!("{}", "Anywhere".green()),
+        }
+        first = false;
+    }
+}
+
+fn display_id(id: &ModificationId) {
+    println!(
+        "Ontology: {}, name: {}, index: {}",
+        id.ontology.to_string().purple(),
+        id.name.green(),
+        id.id.to_string().blue()
+    );
+    if !id.description.is_empty() {
+        println!("{}", id.description);
+    }
+    if !id.cross_ids.is_empty() {
+        println!(
+            "IDs: {}",
+            id.cross_ids
+                .iter()
+                .map(|(r, i)| format!("{}{}{i}", r.dimmed(), ":".dimmed()))
+                .join(", ")
+        );
+    }
+    if !id.synonyms.is_empty() {
+        println!("Synonyms: {}", id.synonyms.join(", "));
+    }
+}
+
 fn display_germline(allele: Allele, args: &Cli) {
-    let alignment = rustyms::align::align::<1>(
+    let alignment = rustyms::align::align::<1, ExtremelySimple, ExtremelySimple>(
         allele.sequence,
         allele.sequence,
         rustyms::align::matrix::BLOSUM90,
@@ -687,42 +844,34 @@ fn display_germline(allele: Allele, args: &Cli) {
         allele.species.common_name(),
         format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
     );
-    show_annotated_mass_alignment(
-        &alignment,
-        args.tolerance,
-        Some(&allele),
-        args.line_width,
-        args.context,
-        true,
-        ("", ""),
-    );
+    show_annotated_mass_alignment(&alignment, Some(&allele), true, ("", ""), &args);
 }
 
-fn align<'a>(
-    seq_a: &'a LinearPeptide,
-    seq_b: &'a LinearPeptide,
-    tolerance: Tolerance,
+fn align<'a, A: Into<Simple> + Into<Linear>, B: Into<Simple> + Into<Linear>>(
+    seq_a: &'a LinearPeptide<A>,
+    seq_b: &'a LinearPeptide<B>,
+    tolerance: Tolerance<Mass>,
     ty: AlignType,
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     kind: AlignmentKind,
-) -> RefAlignment<'a> {
+) -> RefAlignment<'a, A, B> {
     if kind.normal {
-        rustyms::align::align::<1>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<1, A, B>(seq_a, seq_b, matrix, tolerance, ty)
     } else if kind.mass_based_huge {
-        rustyms::align::align::<{ u16::MAX }>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<{ u16::MAX }, A, B>(seq_a, seq_b, matrix, tolerance, ty)
     } else if kind.mass_based_long {
-        rustyms::align::align::<8>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<8, A, B>(seq_a, seq_b, matrix, tolerance, ty)
     } else {
-        rustyms::align::align::<4>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<4, A, B>(seq_a, seq_b, matrix, tolerance, ty)
     }
 }
 
 fn consecutive_align(
-    seq: &LinearPeptide,
+    seq: &LinearPeptide<Simple>,
     species: Option<HashSet<imgt::Species>>,
     chains: Option<HashSet<imgt::ChainType>>,
     allele: imgt::AlleleSelection,
-    tolerance: Tolerance,
+    tolerance: Tolerance<Mass>,
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     return_number: usize,
     kind: AlignmentKind,

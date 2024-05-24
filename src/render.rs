@@ -8,8 +8,8 @@ use std::collections::HashSet;
 use std::fmt::Display;
 use std::fmt::Write;
 
-use crate::legend::*;
-use crate::styling::*;
+use crate::{legend::*, Cli};
+use crate::{styling::*, NUMBER_PRECISION};
 
 #[derive(PartialEq, Eq)]
 enum StepType {
@@ -22,25 +22,29 @@ enum StepType {
 
 pub fn show_annotated_mass_alignment(
     alignment: &impl rustyms::align::Alignment,
-    tolerance: Tolerance,
     imgt: Option<&Allele>,
-    line_width: usize,
-    context: bool,
     only_display_a: bool,
     line_names: (
         impl Into<String> + Display + Clone,
         impl Into<String> + Display + Clone,
     ),
+    args: &Cli,
 ) {
     if !only_display_a {
-        show_alignment_header(alignment, tolerance, line_names.clone(), None);
+        show_alignment_header(
+            alignment,
+            args.tolerance,
+            line_names.clone(),
+            None,
+            args.full_number,
+        );
     }
-    let mut writer = CombinedLines::new(line_width, only_display_a, line_names.1);
+    let mut writer = CombinedLines::new(args.line_width, only_display_a, line_names.1);
     show_alignment_inner(
         &mut writer,
         alignment,
         imgt,
-        context,
+        args.context,
         None,
         false,
         String::new(),
@@ -51,9 +55,10 @@ pub fn show_annotated_mass_alignment(
 
 pub fn show_chained_annotated_mass_alignment(
     alignments: &[(Allele, impl rustyms::align::Alignment)],
-    tolerance: Tolerance,
+    tolerance: Tolerance<Mass>,
     line_width: usize,
     context: bool,
+    full_number: bool,
 ) {
     let mut start = 0;
     for alignment in alignments {
@@ -66,6 +71,7 @@ pub fn show_chained_annotated_mass_alignment(
             tolerance,
             (alignment.0.name(), "Query"),
             Some(start),
+            full_number,
         );
         start += alignment.1.len_b() + alignment.1.start_b();
     }
@@ -385,32 +391,38 @@ fn show_alignment_inner(
 
 pub fn show_alignment_header(
     alignment: &impl rustyms::align::Alignment,
-    tolerance: Tolerance,
+    tolerance: Tolerance<Mass>,
     names: (impl Display, impl Display),
     additional_b_start: Option<usize>,
+    full_number: bool,
 ) {
+    let precision = if full_number {
+        None
+    } else {
+        Some(NUMBER_PRECISION)
+    };
     let stats = alignment.stats();
     let score = alignment.score();
     println!(
         "Identity: {} {}, Mass similarity: {} {}, Similarity: {} {}, Gaps: {} {}, Score: {} {}, {}\nStart: {} {} {} {}, Path: {}\n{}\n",
-        format!("{:.3}", stats.identity()).bright_blue(),
+        display_with_precision(stats.identity(), precision).bright_blue(),
         format!("({}/{})", stats.identical, stats.length).dimmed(),
-        format!("{:.3}", stats.mass_similarity()).blue(),
+        display_with_precision(stats.mass_similarity(), precision).blue(),
         format!("({}/{})", stats.mass_similar, stats.length).dimmed(),
-        format!("{:.3}", stats.similarity()).blue(),
+        display_with_precision(stats.similarity(), precision).blue(),
         format!("({}/{})", stats.similar, stats.length).dimmed(),
-        format!("{:.3}", stats.gaps_fraction()).cyan(),
+        display_with_precision(stats.gaps_fraction(), precision).cyan(),
         format!("({}/{})", stats.gaps, stats.length).dimmed(),
-        format!("{:.3}", score.normalised).green(),
+        display_with_precision(score.normalised.0, precision).green(),
         format!("({}/{})", score.absolute, score.max).dimmed(),
         if alignment
         .mass_difference().value==0.0 {
             "Equal mass".yellow().to_string()
         } else {
-            let (num, unit) = relative_notation(alignment.ppm(), 3);
+            let (num, unit) = relative_notation(alignment.ppm().value * 1e6, 3); // ratio to ppm
             format!("{} {}", num.yellow(), unit);
             format!("Mass difference: {} {} {}",
-                display_mass(alignment.mass_difference(), true),
+                display_mass(alignment.mass_difference(), true, precision),
                 num.yellow(),
                 unit,)
         },
@@ -588,8 +600,8 @@ pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styl
     line("╰", "┴", "╯");
 }
 
-pub fn display_mass(value: Mass, colour: bool) -> String {
-    let (num, suf) = engineering_notation(value.value, 3);
+pub fn display_mass(value: Mass, colour: bool, precision: Option<usize>) -> String {
+    let (num, suf) = engineering_notation(value.value, precision);
     format!(
         "{} {}Da",
         if colour {
@@ -601,9 +613,17 @@ pub fn display_mass(value: Mass, colour: bool) -> String {
     )
 }
 
+fn display_with_precision(n: f64, precision: Option<usize>) -> String {
+    if let Some(precision) = precision {
+        format!("{n:.precision$}")
+    } else {
+        format!("{n}",)
+    }
+}
+
 /// Display the given value in engineering notation eg `1000` -> `10 k`, with the given number of decimal points and returns the suffix separately.
 /// /// A value of `0.0` will result in the lowest possible suffix `0.0 q`.
-fn engineering_notation(value: f64, precision: usize) -> (String, Option<char>) {
+fn engineering_notation(value: f64, precision: Option<usize>) -> (String, Option<char>) {
     const BIG_SUFFIXES: &[char] = &[' ', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 'R', 'Q'];
     const SMALL_SUFFIXES: &[char] = &[' ', 'm', 'μ', 'n', 'p', 'f', 'a', 'z', 'y', 'r', 'q'];
     let base = if value == 0.0 {
@@ -616,18 +636,15 @@ fn engineering_notation(value: f64, precision: usize) -> (String, Option<char>) 
     };
     match base.cmp(&0) {
         Ordering::Less => (
-            format!(
-                "{:.precision$}",
+            display_with_precision(
                 value * 10_usize.pow(base.unsigned_abs() as u32 * 3) as f64,
+                precision,
             ),
             Some(SMALL_SUFFIXES[base.unsigned_abs()]),
         ),
-        Ordering::Equal => (format!("{value:.precision$}"), None),
+        Ordering::Equal => (display_with_precision(value, precision), None),
         Ordering::Greater => (
-            format!(
-                "{:.precision$}",
-                value / 10_usize.pow(base as u32 * 3) as f64,
-            ),
+            display_with_precision(value / 10_usize.pow(base as u32 * 3) as f64, precision),
             Some(BIG_SUFFIXES[base as usize]),
         ),
     }
