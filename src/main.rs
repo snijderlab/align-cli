@@ -844,17 +844,17 @@ fn display_germline(allele: Allele, args: &Cli) {
         allele.species.common_name(),
         format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
     );
-    show_annotated_mass_alignment(&alignment, Some(&allele), true, ("", ""), &args);
+    show_annotated_mass_alignment(&alignment, Some(&allele), true, ("", ""), args);
 }
 
-fn align<'a, A: Into<Simple> + Into<Linear>, B: Into<Simple> + Into<Linear>>(
+fn align<'a, A: Into<Simple> + Into<Linear> + Clone, B: Into<Simple> + Into<Linear> + Clone>(
     seq_a: &'a LinearPeptide<A>,
     seq_b: &'a LinearPeptide<B>,
     tolerance: Tolerance<Mass>,
     ty: AlignType,
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     kind: AlignmentKind,
-) -> RefAlignment<'a, A, B> {
+) -> Alignment<'a, A, B> {
     if kind.normal {
         rustyms::align::align::<1, A, B>(seq_a, seq_b, matrix, tolerance, ty)
     } else if kind.mass_based_huge {
@@ -875,7 +875,7 @@ fn consecutive_align(
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     return_number: usize,
     kind: AlignmentKind,
-) -> Vec<Vec<(Allele<'static>, OwnedAlignment)>> {
+) -> Vec<Vec<(Allele<'static>, Alignment<'static, ExtremelySimple, Simple>)>> {
     if kind.normal {
         par_consecutive_align::<1>(
             seq,

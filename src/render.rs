@@ -1,7 +1,9 @@
 use colored::{Color, Colorize, Styles};
 use itertools::Itertools;
+use rustyms::align::Alignment;
 use rustyms::imgt::{Allele, Region};
 use rustyms::system::Mass;
+use rustyms::Linear;
 use rustyms::{align::MatchType, Tolerance};
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -20,8 +22,8 @@ enum StepType {
     Special,
 }
 
-pub fn show_annotated_mass_alignment(
-    alignment: &impl rustyms::align::Alignment,
+pub fn show_annotated_mass_alignment<A: Into<Linear> + Clone, B: Into<Linear> + Clone>(
+    alignment: &Alignment<'_, A, B>,
     imgt: Option<&Allele>,
     only_display_a: bool,
     line_names: (
@@ -53,8 +55,8 @@ pub fn show_annotated_mass_alignment(
     writer.flush();
 }
 
-pub fn show_chained_annotated_mass_alignment(
-    alignments: &[(Allele, impl rustyms::align::Alignment)],
+pub fn show_chained_annotated_mass_alignment<A: Into<Linear> + Clone, B: Into<Linear> + Clone>(
+    alignments: &[(Allele, Alignment<'_, A, B>)],
     tolerance: Tolerance<Mass>,
     line_width: usize,
     context: bool,
@@ -94,9 +96,9 @@ pub fn show_chained_annotated_mass_alignment(
     writer.flush();
 }
 
-fn show_alignment_inner(
+fn show_alignment_inner<A: Clone, B: Clone>(
     writer: &mut CombinedLines,
-    alignment: &impl rustyms::align::Alignment,
+    alignment: &Alignment<'_, A, B>,
     imgt: Option<&Allele>,
     context: bool,
     start_context_override: Option<Region>,
@@ -389,8 +391,8 @@ fn show_alignment_inner(
     (number_tail, last_region)
 }
 
-pub fn show_alignment_header(
-    alignment: &impl rustyms::align::Alignment,
+pub fn show_alignment_header<A: Into<Linear> + Clone, B: Into<Linear> + Clone>(
+    alignment: &Alignment<'_, A, B>,
     tolerance: Tolerance<Mass>,
     names: (impl Display, impl Display),
     additional_b_start: Option<usize>,
