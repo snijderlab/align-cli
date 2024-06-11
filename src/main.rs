@@ -877,7 +877,7 @@ fn consecutive_align(
     kind: AlignmentKind,
 ) -> Vec<Vec<(Allele<'static>, Alignment<'static, ExtremelySimple, Simple>)>> {
     if kind.normal {
-        par_consecutive_align::<1>(
+        par_consecutive_align::<1, Simple>(
             seq,
             &[
                 (
@@ -910,7 +910,7 @@ fn consecutive_align(
             return_number,
         )
     } else if kind.mass_based_huge {
-        par_consecutive_align::<{ u16::MAX }>(
+        par_consecutive_align::<{ u16::MAX }, Simple>(
             seq,
             &[
                 (
@@ -943,7 +943,7 @@ fn consecutive_align(
             return_number,
         )
     } else if kind.mass_based_long {
-        par_consecutive_align::<8>(
+        par_consecutive_align::<8, Simple>(
             seq,
             &[
                 (
@@ -976,7 +976,7 @@ fn consecutive_align(
             return_number,
         )
     } else {
-        par_consecutive_align::<4>(
+        par_consecutive_align::<4, Simple>(
             seq,
             &[
                 (
