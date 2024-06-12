@@ -1,10 +1,10 @@
 use colored::{Color, Colorize, Styles};
 use itertools::Itertools;
 use rustyms::align::Alignment;
-use rustyms::imgt::{Allele, Region};
+use rustyms::imgt::{Allele, Annotation, Region};
 use rustyms::system::Mass;
-use rustyms::Linear;
 use rustyms::{align::MatchType, Tolerance};
+use rustyms::{AminoAcid, Linear, LinearPeptide};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -107,6 +107,8 @@ fn show_alignment_inner<A: Clone, B: Clone>(
     a_name: String,
 ) -> (String, Option<Region>) {
     let (mut a, mut b) = alignment.start();
+    let a_glycan = find_possible_n_glycan_locations(alignment.seq_a());
+    let b_glycan = find_possible_n_glycan_locations(alignment.seq_b());
     const NUMBER_GAP: usize = 10;
     let mut number_shift_back = 1;
     let mut number_tail = number_tail;
@@ -316,6 +318,12 @@ fn show_alignment_inner<A: Clone, B: Clone>(
                     Styling::none()
                         .fg(imgt
                             .and_then(|imgt| imgt.annotations(a).next().and_then(|a| a.fg_color())))
+                        .or_fg(
+                            a_glycan
+                                .contains(&a)
+                                .then_some(Annotation::NGlycan)
+                                .and_then(|a| a.fg_color()),
+                        )
                         .maybe_style(
                             (alignment.seq_a()[a..a + step.step_a as usize]
                                 .iter()
@@ -325,12 +333,17 @@ fn show_alignment_inner<A: Clone, B: Clone>(
                 ),
                 (
                     b_str[s],
-                    Styling::none().maybe_style(
-                        (alignment.seq_b()[b..b + step.step_b as usize]
-                            .iter()
-                            .any(|a| !a.modifications.is_empty()))
-                        .then_some(Styles::Underline),
-                    ),
+                    Styling::none()
+                        .fg(b_glycan
+                            .contains(&b)
+                            .then_some(Annotation::NGlycan)
+                            .and_then(|a| a.fg_color()))
+                        .maybe_style(
+                            (alignment.seq_b()[b..b + step.step_b as usize]
+                                .iter()
+                                .any(|a| !a.modifications.is_empty()))
+                            .then_some(Styles::Underline),
+                        ),
                 ),
                 bottom[s],
             )
@@ -512,7 +525,7 @@ impl CombinedLines {
         write!(
             &mut self.b,
             "{}",
-            b.0.apply(&b.1.clone().fg(color_fg).bg(background_colour))
+            b.0.apply(&b.1.clone().or_fg(color_fg).bg(background_colour))
         )
         .unwrap();
         self.b_content |= !b.0.is_whitespace();
@@ -668,4 +681,16 @@ fn relative_notation(ppm: f64, precision: usize) -> (String, &'static str) {
     } else {
         (format!("{:.precision$}", ppm), "ppm")
     }
+}
+
+fn find_possible_n_glycan_locations<A>(sequence: &LinearPeptide<A>) -> Vec<usize> {
+    let mut result = Vec::new();
+    for (index, aa) in sequence.sequence.windows(3).enumerate() {
+        if let (AminoAcid::N, AminoAcid::S | AminoAcid::T) = (aa[0].aminoacid, aa[2].aminoacid) {
+            if aa[1].aminoacid != AminoAcid::P {
+                result.push(index);
+            }
+        }
+    }
+    result
 }
