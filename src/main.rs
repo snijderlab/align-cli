@@ -297,15 +297,14 @@ fn main() {
     } else if let Some(modification) = &args.modification {
         modification_stats(modification, args.tolerance, args.full_number);
     } else if let Some(file) = &args.second.csv {
-        let csv = rustyms::csv::parse_csv(file, b',', None).unwrap();
+        let csv = rustyms::csv::parse_csv(file, b',', None).expect("Failed to parse CSV file");
         let output = std::fs::File::create(
             Path::new(file).with_file_name(
                 Path::new(file)
                     .file_name()
                     .unwrap_or_default()
-                    .to_str()
-                    .unwrap_or_default()
-                    .to_owned()
+                    .to_string_lossy()
+                    .to_string()
                     + "_output.csv",
             ),
         )
@@ -313,7 +312,7 @@ fn main() {
         let mut writer = BufWriter::new(output);
         let mut first = true;
         for line in csv {
-            let line = line.unwrap();
+            let line = line.expect("Failed to read CSV line");
             if first {
                 writeln!(
                     writer,
