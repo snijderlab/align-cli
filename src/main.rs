@@ -555,7 +555,7 @@ fn modification_stats(
             for (ontology, id, _name, modification) in modifications {
                 data.push([
                     modification.to_string(),
-                    format!("{}:{}", ontology.name(), id),
+                    format!("{id}:{}", ontology.name()),
                     display_mass(modification.formula().monoisotopic_mass(), false, precision),
                     modification.formula().hill_notation_fancy(),
                 ])
@@ -588,7 +588,7 @@ fn modification_stats(
             for (ontology, id, _name, modification) in modifications {
                 data.push([
                     modification.to_string(),
-                    format!("{}:{}", ontology.name(), id),
+                    format!("{id}:{}", ontology.name()),
                 ])
             }
             if data.len() > 1 {
