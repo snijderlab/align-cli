@@ -1,6 +1,6 @@
 title: Align Command Line Interface (align-cli)
 version: 0.4.0
-abstract: A CLI for pairwise alignment of sequences, using both normal and mass based alignment.
+abstract: A command line interface for pairwise alignment of sequences using mass-based alignment.
 authors:
   - affiliation: Utrecht University
     family-names: Schulte
@@ -12,6 +12,9 @@ authors:
     orcid: https://orcid.org/0000-0002-9310-8226
 cff-version: 1.2.0
 identifiers:
+  - description: Algorithm paper
+    type: doi
+    value: 10.1021/acs.jproteome.4c00188
   - description: Algorithm paper (preprint)
     type: url
     value: https://www.biorxiv.org/content/10.1101/2024.02.20.581155v1
