@@ -2,7 +2,7 @@ use clap::{Args, Parser};
 use rustyms::imgt::{AlleleSelection, Gene, GeneType, ChainType, Species};
 use rustyms::modification::SimpleModification;
 use rustyms::system::Mass;
-use rustyms::{ReturnModification, Simple};
+use rustyms::{ReturnModification, SimpleLinear};
 use rustyms::{
     placement_rule::*,
     AminoAcid,  LinearPeptide, Tolerance, align::{AlignType, self},
@@ -84,7 +84,7 @@ pub struct Cli {
 
     /// The base to always include in generating isobaric sets. This is assumed to be a simple sequence (for details see rustyms::LinearPeptide::assume_simple).
     #[arg(long, value_parser=peptide_parser)]
-    pub include: Option<LinearPeptide<Simple>>,
+    pub include: Option<LinearPeptide<SimpleLinear>>,
 
     /// Overrule the default set of amino acids used in the isobaric sequences generation. The default set has all amino acids with a defined mass (no I/L in favour of J, no B/Z/X, but with U/O included).
     #[arg(long, value_parser=amino_acids_parser)]
@@ -117,6 +117,10 @@ pub struct Cli {
     /// Show full mass precision according to floating point math instead of the normal capped number of digits
     #[arg(long)]
     pub full_number: bool,
+
+    /// Show listed IMGT genes (with --specific-gene or --imgt) when there is no alignment in fasta format for easy copying
+    #[arg(long)]
+    pub display_fasta: bool,
 }
 
 fn chains_parser(value: &str) -> Result<HashSet<ChainType>, String> {
@@ -330,8 +334,8 @@ fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
             .map_err(|_| "Invalid options parameter")
     }
 }
-fn peptide_parser(input: &str) -> Result<LinearPeptide<Simple>, String> {
-    LinearPeptide::pro_forma(input, None).map_err(|e| e.to_string())?.simple().ok_or("Not a simple peptide".to_string())
+fn peptide_parser(input: &str) -> Result<LinearPeptide<SimpleLinear>, String> {
+    LinearPeptide::pro_forma(input, None).map_err(|e| e.to_string())?.into_simple_linear().ok_or("Not a simple peptide".to_string())
 }
 fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
     input

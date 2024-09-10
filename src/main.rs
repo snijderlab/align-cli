@@ -16,7 +16,7 @@ use rustyms::{
     placement_rule::*,
     AminoAcid, Chemical, LinearPeptide, MolecularFormula, Multi, Tolerance,
 };
-use rustyms::{ExtremelySimple, Linear, Simple};
+use rustyms::{AtMax, SimpleLinear, UnAmbiguous};
 use std::{
     collections::HashSet,
     io::{BufWriter, Write},
@@ -38,8 +38,14 @@ use styling::*;
 fn main() {
     let args = Cli::parse();
     if let (Some(a), Some(b)) = (&args.a, &args.second.b) {
-        let a = LinearPeptide::pro_forma(a, None).unwrap().simple().unwrap();
-        let b = LinearPeptide::pro_forma(b, None).unwrap().simple().unwrap();
+        let a = LinearPeptide::pro_forma(a, None)
+            .unwrap()
+            .into_simple_linear()
+            .unwrap();
+        let b = LinearPeptide::pro_forma(b, None)
+            .unwrap()
+            .into_simple_linear()
+            .unwrap();
         let alignment = align(
             &a,
             &b,
@@ -48,15 +54,18 @@ fn main() {
             args.scoring_matrix.matrix(),
             args.alignment_kind,
         );
-        show_annotated_mass_alignment(&alignment, None, false, ("A", "B"), &args);
+        show_annotated_mass_alignment(&alignment, None, false, false, ("A", "B"), &args);
     } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
         let sequences = rustyms::identification::FastaData::parse_file(path).unwrap();
-        let search_sequence = LinearPeptide::pro_forma(b, None).unwrap().simple().unwrap();
+        let search_sequence = LinearPeptide::pro_forma(b, None)
+            .unwrap()
+            .into_simple_linear()
+            .unwrap();
         let mut alignments: Vec<_> = sequences
             .into_par_iter()
             .map(|seq| {
-                let sequence: LinearPeptide<Simple> =
-                    seq.peptide.sequence.iter().cloned().collect();
+                let sequence: LinearPeptide<SimpleLinear> =
+                    seq.peptide.sequence().iter().cloned().collect();
                 let alignment = align(
                     &sequence,
                     &search_sequence,
@@ -113,11 +122,15 @@ fn main() {
             &selected[0].1,
             None,
             false,
+            false,
             (&selected[0].0.id, "Query"),
             &args,
         );
     } else if let (Some(x), true) = (&args.a, &args.second.imgt) {
-        let seq_b = LinearPeptide::pro_forma(x, None).unwrap().simple().unwrap();
+        let seq_b = LinearPeptide::pro_forma(x, None)
+            .unwrap()
+            .into_simple_linear()
+            .unwrap();
         let mut alignments: Vec<_> = Selection {
             species: args.species.map(|s| HashSet::from([s])),
             chains: args.chains.clone(),
@@ -191,12 +204,16 @@ fn main() {
             &selected[0].1,
             Some(&selected[0].0),
             false,
+            false,
             (selected[0].0.name(), "Query"),
             &args,
         );
     } else if let (Some(x), true) = (&args.a, &args.second.domain) {
         let scores = consecutive_align(
-            &LinearPeptide::pro_forma(x, None).unwrap().simple().unwrap(),
+            &LinearPeptide::pro_forma(x, None)
+                .unwrap()
+                .into_simple_linear()
+                .unwrap(),
             args.species.map(|s| HashSet::from([s])),
             args.chains.clone(),
             args.allele.clone(),
@@ -264,7 +281,10 @@ fn main() {
         (&args.a, &args.second.specific_gene, &args.species)
     {
         if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
-            let b = LinearPeptide::pro_forma(x, None).unwrap().simple().unwrap();
+            let b = LinearPeptide::pro_forma(x, None)
+                .unwrap()
+                .into_simple_linear()
+                .unwrap();
             let alignment = align(
                 allele.sequence,
                 &b,
@@ -283,6 +303,7 @@ fn main() {
                 &alignment,
                 Some(&allele),
                 false,
+                false,
                 (allele.name(), "Query"),
                 &args,
             );
@@ -292,7 +313,10 @@ fn main() {
     } else if let Some(x) = &args.a {
         single_stats(
             &args,
-            LinearPeptide::pro_forma(x, None).unwrap().simple().unwrap(),
+            LinearPeptide::pro_forma(x, None)
+                .unwrap()
+                .into_simple_linear()
+                .unwrap(),
         )
     } else if let Some(modification) = &args.modification {
         modification_stats(modification, args.tolerance, args.full_number);
@@ -324,11 +348,11 @@ fn main() {
             }
             let a = LinearPeptide::pro_forma(line.index_column("a").unwrap().0, None)
                 .unwrap()
-                .simple()
+                .into_simple_linear()
                 .unwrap();
             let b = LinearPeptide::pro_forma(line.index_column("b").unwrap().0, None)
                 .unwrap()
-                .simple()
+                .into_simple_linear()
                 .unwrap();
             let alignment = align(
                 &a,
@@ -384,7 +408,7 @@ fn main() {
     }
 }
 
-fn single_stats(args: &Cli, seq: LinearPeptide<Simple>) {
+fn single_stats(args: &Cli, seq: LinearPeptide<SimpleLinear>) {
     let full_formulas = seq.formulas().unique();
     let bare_formulas = seq.bare_formulas().unique();
     print_multi_formula(&full_formulas, "Full", "", args.full_number);
@@ -830,23 +854,39 @@ fn display_id(id: &ModificationId) {
 }
 
 fn display_germline(allele: Allele, args: &Cli) {
-    let alignment = rustyms::align::align::<1, ExtremelySimple, ExtremelySimple>(
+    let alignment = rustyms::align::align::<1, UnAmbiguous, UnAmbiguous>(
         allele.sequence,
         allele.sequence,
         rustyms::align::matrix::BLOSUM90,
         Tolerance::new_ppm(10.0),
         rustyms::align::AlignType::GLOBAL,
     );
-    println!(
-        "{} {} {}",
-        allele.species.scientific_name().to_string().purple(),
-        allele.species.common_name(),
-        format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
+    if args.display_fasta {
+        println!(
+            ">{} {} {}",
+            allele.name().purple(),
+            allele.species.scientific_name(),
+            allele.species.common_name().purple(),
+        );
+    } else {
+        println!(
+            "{} {} {}",
+            allele.species.scientific_name().to_string().purple(),
+            allele.species.common_name(),
+            format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
+        );
+    }
+    show_annotated_mass_alignment(
+        &alignment,
+        Some(&allele),
+        true,
+        args.display_fasta,
+        ("", ""),
+        args,
     );
-    show_annotated_mass_alignment(&alignment, Some(&allele), true, ("", ""), args);
 }
 
-fn align<'a, A: Into<Simple> + Into<Linear> + Clone, B: Into<Simple> + Into<Linear> + Clone>(
+fn align<'a, A: AtMax<SimpleLinear>, B: AtMax<SimpleLinear>>(
     seq_a: &'a LinearPeptide<A>,
     seq_b: &'a LinearPeptide<B>,
     tolerance: Tolerance<Mass>,
@@ -866,7 +906,7 @@ fn align<'a, A: Into<Simple> + Into<Linear> + Clone, B: Into<Simple> + Into<Line
 }
 
 fn consecutive_align(
-    seq: &LinearPeptide<Simple>,
+    seq: &LinearPeptide<SimpleLinear>,
     species: Option<HashSet<imgt::Species>>,
     chains: Option<HashSet<imgt::ChainType>>,
     allele: imgt::AlleleSelection,
@@ -874,9 +914,14 @@ fn consecutive_align(
     matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     return_number: usize,
     kind: AlignmentKind,
-) -> Vec<Vec<(Allele<'static>, Alignment<'static, ExtremelySimple, Simple>)>> {
+) -> Vec<
+    Vec<(
+        Allele<'static>,
+        Alignment<'static, UnAmbiguous, SimpleLinear>,
+    )>,
+> {
     if kind.normal {
-        par_consecutive_align::<1, Simple>(
+        par_consecutive_align::<1, SimpleLinear>(
             seq,
             &[
                 (
@@ -909,7 +954,7 @@ fn consecutive_align(
             return_number,
         )
     } else if kind.mass_based_huge {
-        par_consecutive_align::<{ u16::MAX }, Simple>(
+        par_consecutive_align::<{ u16::MAX }, SimpleLinear>(
             seq,
             &[
                 (
@@ -942,7 +987,7 @@ fn consecutive_align(
             return_number,
         )
     } else if kind.mass_based_long {
-        par_consecutive_align::<8, Simple>(
+        par_consecutive_align::<8, SimpleLinear>(
             seq,
             &[
                 (
@@ -975,7 +1020,7 @@ fn consecutive_align(
             return_number,
         )
     } else {
-        par_consecutive_align::<4, Simple>(
+        par_consecutive_align::<4, SimpleLinear>(
             seq,
             &[
                 (

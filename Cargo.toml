@@ -14,11 +14,11 @@ name = "align"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive", "cargo"] }
+clap = { version = "4.5", features = ["derive", "cargo"] }
 colored = "2"
 itertools = "0.13"
-rayon = "1.8"
-rustyms = "0.8"
+rayon = "1.10"
+rustyms = "0.9.0-alpha.1"
 
 [patch.crates-io]
 rustyms = { path = "../rustyms/rustyms" }

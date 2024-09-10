@@ -4,7 +4,7 @@ use rustyms::align::Alignment;
 use rustyms::imgt::{Allele, Annotation, Region};
 use rustyms::system::Mass;
 use rustyms::{align::MatchType, Tolerance};
-use rustyms::{AminoAcid, Linear, LinearPeptide};
+use rustyms::{AminoAcid, AtMax, Linear, LinearPeptide};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -22,10 +22,11 @@ enum StepType {
     Special,
 }
 
-pub fn show_annotated_mass_alignment<A: Into<Linear> + Clone, B: Into<Linear> + Clone>(
+pub fn show_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>(
     alignment: &Alignment<'_, A, B>,
     imgt: Option<&Allele>,
     only_display_a: bool,
+    omit_headers: bool,
     line_names: (
         impl Into<String> + Display + Clone,
         impl Into<String> + Display + Clone,
@@ -41,7 +42,8 @@ pub fn show_annotated_mass_alignment<A: Into<Linear> + Clone, B: Into<Linear> + 
             args.full_number,
         );
     }
-    let mut writer = CombinedLines::new(args.line_width, only_display_a, line_names.1);
+    let mut writer =
+        CombinedLines::new(args.line_width, only_display_a, omit_headers, line_names.1);
     show_alignment_inner(
         &mut writer,
         alignment,
@@ -55,7 +57,7 @@ pub fn show_annotated_mass_alignment<A: Into<Linear> + Clone, B: Into<Linear> + 
     writer.flush();
 }
 
-pub fn show_chained_annotated_mass_alignment<A: Into<Linear> + Clone, B: Into<Linear> + Clone>(
+pub fn show_chained_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>(
     alignments: &[(Allele, Alignment<'_, A, B>)],
     tolerance: Tolerance<Mass>,
     line_width: usize,
@@ -78,7 +80,7 @@ pub fn show_chained_annotated_mass_alignment<A: Into<Linear> + Clone, B: Into<Li
         start += alignment.1.len_b() + alignment.1.start_b();
     }
 
-    let mut writer = CombinedLines::new(line_width, false, "Query");
+    let mut writer = CombinedLines::new(line_width, false, false, "Query");
     let mut number_tail = String::new();
     let mut last_context = None;
     for (index, alignment) in alignments.iter().enumerate() {
@@ -96,7 +98,7 @@ pub fn show_chained_annotated_mass_alignment<A: Into<Linear> + Clone, B: Into<Li
     writer.flush();
 }
 
-fn show_alignment_inner<A: Clone, B: Clone>(
+fn show_alignment_inner<A, B>(
     writer: &mut CombinedLines,
     alignment: &Alignment<'_, A, B>,
     imgt: Option<&Allele>,
@@ -194,18 +196,18 @@ fn show_alignment_inner<A: Clone, B: Clone>(
                 start_context_override.and_then(|r| r.bg_color()),
                 (number_tail.pop().unwrap_or(' '), base_style.clone()),
                 (
-                    a_index.map_or(' ', |a| alignment.seq_a().sequence[a].aminoacid.char()),
+                    a_index.map_or(' ', |a| alignment.seq_a().sequence()[a].aminoacid.char()),
                     base_style.clone().maybe_style(a_index.and_then(|a| {
-                        alignment.seq_a().sequence[a..a + 1]
+                        alignment.seq_a().sequence()[a..a + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
                     })),
                 ),
                 (
-                    b_index.map_or(' ', |b| alignment.seq_b().sequence[b].aminoacid.char()),
+                    b_index.map_or(' ', |b| alignment.seq_b().sequence()[b].aminoacid.char()),
                     base_style.clone().maybe_style(b_index.and_then(|b| {
-                        alignment.seq_b().sequence[b..b + 1]
+                        alignment.seq_b().sequence()[b..b + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
@@ -404,7 +406,7 @@ fn show_alignment_inner<A: Clone, B: Clone>(
     (number_tail, last_region)
 }
 
-pub fn show_alignment_header<A: Into<Linear> + Clone, B: Into<Linear> + Clone>(
+pub fn show_alignment_header<A: AtMax<Linear>, B: AtMax<Linear>>(
     alignment: &Alignment<'_, A, B>,
     tolerance: Tolerance<Mass>,
     names: (impl Display, impl Display),
@@ -467,12 +469,18 @@ struct CombinedLines {
     lines: usize,
     line_width: usize,
     only_display_a: bool,
+    omit_headers: bool,
     a_names: HashSet<String>,
     b_name: String,
 }
 
 impl CombinedLines {
-    fn new(line_width: usize, only_display_a: bool, b_name: impl Into<String>) -> Self {
+    fn new(
+        line_width: usize,
+        only_display_a: bool,
+        omit_headers: bool,
+        b_name: impl Into<String>,
+    ) -> Self {
         Self {
             numbers: String::with_capacity(line_width),
             a: String::with_capacity(line_width),
@@ -485,6 +493,7 @@ impl CombinedLines {
             lines: 0,
             line_width,
             only_display_a,
+            omit_headers,
             a_names: HashSet::new(),
             b_name: b_name.into(),
         }
@@ -547,22 +556,29 @@ impl CombinedLines {
 
     fn flush(&mut self) {
         // Only print a line if is has content
-        println!("{}", self.numbers);
+        if !self.omit_headers {
+            println!("{}", self.numbers);
+        }
         let padding = if self.lines > 0 {
             " ".repeat(self.line_width - self.chars)
         } else {
             String::new()
         };
         if self.a_content {
-            println!(
-                "{}{} {}",
-                self.a,
-                padding,
-                self.a_names.iter().join(" / ").dimmed(),
-            );
+            print!("{}", self.a,);
+            if self.omit_headers {
+                println!();
+            } else {
+                println!("{} {}", padding, self.a_names.iter().join(" / ").dimmed(),);
+            }
         }
         if !self.only_display_a && self.b_content {
-            println!("{}{} {}", self.b, padding, self.b_name.dimmed(),);
+            print!("{}", self.b,);
+            if self.omit_headers {
+                println!();
+            } else {
+                println!("{} {}", padding, self.b_name.dimmed(),);
+            }
         }
         if !self.only_display_a && self.marker_content {
             println!("{}", self.marker);
@@ -685,9 +701,11 @@ fn relative_notation(ppm: f64, precision: usize) -> (String, &'static str) {
 
 fn find_possible_n_glycan_locations<A>(sequence: &LinearPeptide<A>) -> Vec<usize> {
     let mut result = Vec::new();
-    for (index, aa) in sequence.sequence.windows(3).enumerate() {
-        if let (AminoAcid::N, AminoAcid::S | AminoAcid::T) = (aa[0].aminoacid, aa[2].aminoacid) {
-            if aa[1].aminoacid != AminoAcid::P {
+    for (index, aa) in sequence.sequence().windows(3).enumerate() {
+        if let (AminoAcid::Asparagine, AminoAcid::Serine | AminoAcid::Threonine) =
+            (aa[0].aminoacid.aminoacid(), aa[2].aminoacid.aminoacid())
+        {
+            if aa[1].aminoacid.aminoacid() != AminoAcid::Proline {
                 result.push(index);
             }
         }
