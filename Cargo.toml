@@ -21,7 +21,7 @@ rayon = "1.10"
 rustyms = "0.9.0-alpha.1"
 
 [patch.crates-io]
-rustyms = { git = "https://gihtub.com/snijderlab/rustyms", branch = "main" }
+rustyms = { git = "https://github.com/snijderlab/rustyms", branch = "main" }
 
 [profile.release]
 debug = true

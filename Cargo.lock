@@ -800,6 +800,7 @@ checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 [[package]]
 name = "rustyms"
 version = "0.9.0-alpha.1"
+source = "git+https://github.com/snijderlab/rustyms?branch=main#292f7a4d869bb6fdf204767798c036a7c7f725dc"
 dependencies = [
  "bincode",
  "flate2",
