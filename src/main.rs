@@ -135,7 +135,7 @@ fn main() {
             species: args.species.map(|s| HashSet::from([s])),
             chains: args.chains.clone(),
             genes: args.genes.clone(),
-            allele: args.allele.clone(),
+            allele: args.allele,
         }
         .par_germlines()
         .map(|seq| {
@@ -216,7 +216,7 @@ fn main() {
                 .unwrap(),
             args.species.map(|s| HashSet::from([s])),
             args.chains.clone(),
-            args.allele.clone(),
+            args.allele,
             args.tolerance,
             args.scoring_matrix.matrix(),
             args.number_of_hits,
@@ -393,7 +393,7 @@ fn main() {
             species: args.species.map(|s| HashSet::from([s])),
             chains: args.chains.clone(),
             genes: args.genes.clone(),
-            allele: args.allele.clone(),
+            allele: args.allele,
         };
         for allele in selection.germlines() {
             if !first {
@@ -564,10 +564,15 @@ fn modification_stats(
     } else {
         Some(NUMBER_PRECISION)
     };
-    match SimpleModification::search(modification, tolerance, None) {
-        ModificationSearchResult::Mass(_mass, tolerance, modifications) => {
+    match SimpleModification::search(
+        modification,
+        tolerance,
+        rustyms::MassMode::Monoisotopic,
+        None,
+    ) {
+        ModificationSearchResult::Mass(_mass, tolerance, mode, modifications) => {
             println!(
-                "All ontology modifications close to the given monoisotopic mass: {}",
+                "All ontology modifications close to the given {mode}: {}",
                 format!("tolerance: {tolerance}").dimmed()
             );
             let mut data = vec![[
@@ -579,7 +584,11 @@ fn modification_stats(
             for (ontology, id, _name, modification) in modifications {
                 data.push([
                     modification.to_string(),
-                    format!("{id}:{}", ontology.name()),
+                    format!(
+                        "{}{}",
+                        id.map_or(String::new(), |id| format!("{id}:")),
+                        ontology.name()
+                    ),
                     display_mass(modification.formula().monoisotopic_mass(), false, precision),
                     modification.formula().hill_notation_fancy(),
                 ])
@@ -612,7 +621,11 @@ fn modification_stats(
             for (ontology, id, _name, modification) in modifications {
                 data.push([
                     modification.to_string(),
-                    format!("{id}:{}", ontology.name()),
+                    format!(
+                        "{}{}",
+                        id.map_or(String::new(), |id| format!("{id}:")),
+                        ontology.name()
+                    ),
                 ])
             }
             if data.len() > 1 {
@@ -628,14 +641,43 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        ModificationSearchResult::Glycan(_composition, modifications) => {
+        ModificationSearchResult::Glycan(composition, modifications) => {
+            let formula: MolecularFormula = composition
+                .iter()
+                .map(|(s, n)| s.formula() * *n as i32)
+                .sum();
+            println!(
+                "Glycan composition: {}",
+                formula.hill_notation_fancy().green()
+            );
+            println!(
+                "Full mass: {} {} {} {}",
+                display_mass(formula.monoisotopic_mass(), true, precision),
+                display_mass(formula.average_weight(), true, precision),
+                display_mass(formula.most_abundant_mass(), true, precision),
+                "(monoisotopic | average | most abundant)".dimmed(),
+            );
             println!("All GNOme modifications with the same monosaccharide composition:");
-            let mut data = vec![["Name".to_string(), "Structure".to_string()]];
+            let mut data = vec![["Name".to_string(), "Definition".to_string()]];
             for (_ontology, _id, _name, modification) in modifications {
-                if let SimpleModification::Gno(GnoComposition::Structure(structure), _) =
-                    &modification
+                if let SimpleModification::Gno {
+                    composition: GnoComposition::Topology(structure),
+                    ..
+                } = &modification
                 {
                     data.push([modification.to_string(), structure.to_string()])
+                } else if let SimpleModification::Gno {
+                    composition: GnoComposition::Composition(composition),
+                    ..
+                } = &modification
+                {
+                    data.push([
+                        modification.to_string(),
+                        composition
+                            .iter()
+                            .map(|(sug, amount)| format!("{}{amount}", sug.to_string().green()))
+                            .join(""),
+                    ])
                 }
             }
             if data.len() > 1 {
@@ -771,17 +813,37 @@ fn modification_stats(
                         }
                     }
                 }
-                SimpleModification::Gno(composition, name) => {
-                    println!(
-                        "Ontology: {}, name: {}",
-                        "GNOme".to_string().purple(),
-                        name.to_uppercase().green(),
-                    );
+                SimpleModification::Gno {
+                    composition,
+                    id,
+                    structure_score,
+                    subsumption_level,
+                } => {
+                    display_id(&id);
+                    if let Some(score) = structure_score {
+                        println!("Structure score: {}", score.to_string().blue());
+                    }
+                    println!("Subsumption: {}", subsumption_level.to_string().green());
                     match composition {
-                        GnoComposition::Mass(_) => {
-                            println!("Only mass known")
+                        GnoComposition::Weight(mass) => {
+                            println!(
+                                "Average weight: {}",
+                                display_mass(mass.into_inner(), true, precision)
+                            )
                         }
-                        GnoComposition::Structure(structure) => {
+                        GnoComposition::Composition(composition) => {
+                            println!(
+                                "Composition: {}",
+                                composition
+                                    .iter()
+                                    .map(|(sug, amount)| format!(
+                                        "{}{amount}",
+                                        sug.to_string().green()
+                                    ))
+                                    .join("")
+                            )
+                        }
+                        GnoComposition::Topology(structure) => {
                             println!("Structure: {}", structure.to_string().green())
                         }
                     }
@@ -831,10 +893,13 @@ fn display_placement_rules(rules: &[PlacementRule]) {
 
 fn display_id(id: &ModificationId) {
     println!(
-        "Ontology: {}, name: {}, index: {}",
+        "Ontology: {}, name: {}{}",
         id.ontology.to_string().purple(),
         id.name.green(),
-        id.id.to_string().blue()
+        id.id.map_or(String::new(), |id| format!(
+            ", index: {}",
+            id.to_string().blue()
+        ))
     );
     if !id.description.is_empty() {
         println!("{}", id.description);
@@ -948,7 +1013,7 @@ fn consecutive_align(
             ],
             species.clone(),
             chains.clone(),
-            allele.clone(),
+            allele,
             tolerance,
             matrix,
             return_number,
@@ -981,7 +1046,7 @@ fn consecutive_align(
             ],
             species.clone(),
             chains.clone(),
-            allele.clone(),
+            allele,
             tolerance,
             matrix,
             return_number,
@@ -1014,7 +1079,7 @@ fn consecutive_align(
             ],
             species.clone(),
             chains.clone(),
-            allele.clone(),
+            allele,
             tolerance,
             matrix,
             return_number,
@@ -1047,7 +1112,7 @@ fn consecutive_align(
             ],
             species.clone(),
             chains.clone(),
-            allele.clone(),
+            allele,
             tolerance,
             matrix,
             return_number,
