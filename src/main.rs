@@ -5,18 +5,17 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::align::par_consecutive_align;
 use rustyms::imgt::Selection;
-use rustyms::modification::{
-    LinkerSpecificity, ModificationId, ModificationSearchResult, SimpleModification,
-};
 use rustyms::system::Mass;
 use rustyms::{
     align::*,
     find_isobaric_sets, imgt,
-    modification::{GnoComposition, Ontology},
+    modification::{
+        GnoComposition, LinkerSpecificity, ModificationId, Ontology, SimpleModification,
+    },
     placement_rule::*,
-    AminoAcid, Chemical, LinearPeptide, MolecularFormula, Multi, Tolerance,
+    AminoAcid, AtMax, Chemical, LinearPeptide, ModificationSearchResult, MolecularFormula, Multi,
+    SimpleLinear, Tolerance, UnAmbiguous,
 };
-use rustyms::{AtMax, SimpleLinear, UnAmbiguous};
 use std::{
     collections::HashSet,
     io::{BufWriter, Write},
@@ -608,15 +607,10 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        ModificationSearchResult::Formula(formula, modifications) => {
-            println!(
-                "Full mass: {} {} {}\n",
-                display_mass(formula.monoisotopic_mass(), true, precision),
-                display_mass(formula.average_weight(), true, precision),
-                "(monoisotopic | average)".dimmed(),
-            );
+        ModificationSearchResult::Formula(_, modifications) => {
+            display_single_mod(modification, precision);
 
-            println!("All ontology modifications with the same formula:");
+            println!("\nAll ontology modifications with the same formula:");
             let mut data = vec![["Name".to_string(), "Id".to_string()]];
             for (ontology, id, _name, modification) in modifications {
                 data.push([
@@ -641,23 +635,10 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        ModificationSearchResult::Glycan(composition, modifications) => {
-            let formula: MolecularFormula = composition
-                .iter()
-                .map(|(s, n)| s.formula() * *n as i32)
-                .sum();
-            println!(
-                "Glycan composition: {}",
-                formula.hill_notation_fancy().green()
-            );
-            println!(
-                "Full mass: {} {} {} {}",
-                display_mass(formula.monoisotopic_mass(), true, precision),
-                display_mass(formula.average_weight(), true, precision),
-                display_mass(formula.most_abundant_mass(), true, precision),
-                "(monoisotopic | average | most abundant)".dimmed(),
-            );
-            println!("All GNOme modifications with the same monosaccharide composition:");
+        ModificationSearchResult::Glycan(_, modifications) => {
+            display_single_mod(modification, precision);
+
+            println!("\nAll GNOme modifications with the same monosaccharide composition:");
             let mut data = vec![["Name".to_string(), "Definition".to_string()]];
             for (_ontology, _id, _name, modification) in modifications {
                 if let SimpleModification::Gno {
@@ -675,7 +656,7 @@ fn modification_stats(
                         modification.to_string(),
                         composition
                             .iter()
-                            .map(|(sug, amount)| format!("{}{amount}", sug.to_string().green()))
+                            .map(|(sug, amount)| format!("{sug}{amount}"))
                             .join(""),
                     ])
                 }
@@ -684,173 +665,171 @@ fn modification_stats(
                 table(
                     &data,
                     true,
-                    &[
-                        Styling::with_fg(Some(Color::Magenta)),
-                        Styling::with_style(Styles::Dimmed),
-                    ],
+                    &[Styling::with_fg(Some(Color::Magenta)), Styling::none()],
                 );
             } else {
                 println!("{}", "No modifications found".red())
             }
         }
         ModificationSearchResult::Single(modification) => {
-            let monoisotopic = modification.formula().monoisotopic_mass();
-            println!(
-                "Full mass: {} {} {} {}",
-                display_mass(monoisotopic, true, precision),
-                display_mass(modification.formula().average_weight(), true, precision),
-                display_mass(modification.formula().most_abundant_mass(), true, precision),
-                "(monoisotopic | average | most abundant)".dimmed(),
-            );
-            if !modification.formula().is_empty() {
-                println!(
-                    "Composition: {}",
-                    modification.formula().hill_notation_fancy().green(),
-                );
-            }
-            match modification {
-                SimpleModification::Database {
-                    specificities, id, ..
-                } => {
-                    display_id(&id);
-                    println!("Placement rules: ");
+            display_single_mod(&modification, precision)
+        }
+    }
+}
 
-                    for rule in specificities {
+fn display_single_mod(modification: &SimpleModification, precision: Option<usize>) {
+    let monoisotopic = modification.formula().monoisotopic_mass();
+    println!(
+        "Full mass: {} {} {} {}",
+        display_mass(monoisotopic, true, precision),
+        display_mass(modification.formula().average_weight(), true, precision),
+        display_mass(modification.formula().most_abundant_mass(), true, precision),
+        "(monoisotopic | average | most abundant)".dimmed(),
+    );
+    if !modification.formula().is_empty() {
+        println!(
+            "Composition: {}",
+            modification.formula().hill_notation_fancy().green(),
+        );
+    }
+    match modification {
+        SimpleModification::Database {
+            specificities, id, ..
+        } => {
+            display_id(id);
+            println!("Placement rules: ");
+
+            for rule in specificities {
+                print!("  Locations: ");
+                // Print locations
+                display_placement_rules(&rule.0);
+                // Print neutral losses
+                if !rule.1.is_empty() {
+                    print!(
+                        ", Neutral losses: {}",
+                        rule.1
+                            .iter()
+                            .map(|n| n.hill_notation_fancy().yellow())
+                            .join(", ")
+                    );
+                }
+                // Print diagnostic ions
+                if !rule.2.is_empty() {
+                    print!(
+                        ", Diagnostic ions: {}",
+                        rule.2
+                            .iter()
+                            .map(|d| d.0.hill_notation_fancy().green())
+                            .join(", ")
+                    );
+                }
+                println!();
+            }
+        }
+        SimpleModification::Linker {
+            specificities,
+            id,
+            length,
+            ..
+        } => {
+            display_id(id);
+            if let Some(length) = length {
+                println!("Length: {}", length);
+            }
+            println!("Placement rules: ");
+            for specificity in specificities {
+                match specificity {
+                    LinkerSpecificity::Symmetric(locations, stubs, diagnostic) => {
                         print!("  Locations: ");
-                        // Print locations
-                        display_placement_rules(&rule.0);
-                        // Print neutral losses
-                        if !rule.1.is_empty() {
+                        display_placement_rules(locations);
+                        if !stubs.is_empty() {
                             print!(
-                                ", Neutral losses: {}",
-                                rule.1
+                                ", Cleave points: {}",
+                                stubs
                                     .iter()
-                                    .map(|n| n.hill_notation_fancy().yellow())
+                                    .map(|(a, b)| format!(
+                                        "{} + {}",
+                                        a.hill_notation_fancy().yellow(),
+                                        b.hill_notation_fancy().yellow()
+                                    ))
                                     .join(", ")
                             );
                         }
-                        // Print diagnostic ions
-                        if !rule.2.is_empty() {
+                        if !diagnostic.is_empty() {
                             print!(
                                 ", Diagnostic ions: {}",
-                                rule.2
+                                diagnostic
                                     .iter()
                                     .map(|d| d.0.hill_notation_fancy().green())
                                     .join(", ")
                             );
                         }
-                        println!();
                     }
-                }
-                SimpleModification::Linker {
-                    specificities,
-                    id,
-                    length,
-                    ..
-                } => {
-                    display_id(&id);
-                    if let Some(length) = length {
-                        println!("Length: {}", length);
-                    }
-                    println!("Placement rules: ");
-                    for specificity in specificities {
-                        match specificity {
-                            LinkerSpecificity::Symmetric(locations, stubs, diagnostic) => {
-                                print!("  Locations: ");
-                                display_placement_rules(&locations);
-                                if !stubs.is_empty() {
-                                    print!(
-                                        ", Cleave points: {}",
-                                        stubs
-                                            .iter()
-                                            .map(|(a, b)| format!(
-                                                "{} + {}",
-                                                a.hill_notation_fancy().yellow(),
-                                                b.hill_notation_fancy().yellow()
-                                            ))
-                                            .join(", ")
-                                    );
-                                }
-                                if !diagnostic.is_empty() {
-                                    print!(
-                                        ", Diagnostic ions: {}",
-                                        diagnostic
-                                            .iter()
-                                            .map(|d| d.0.hill_notation_fancy().green())
-                                            .join(", ")
-                                    );
-                                }
-                            }
-                            LinkerSpecificity::Asymmetric(locations, stubs, diagnostic) => {
-                                print!("  Left: ");
-                                display_placement_rules(&locations.0);
-                                print!(", Right: ");
-                                display_placement_rules(&locations.1);
+                    LinkerSpecificity::Asymmetric(locations, stubs, diagnostic) => {
+                        print!("  Left: ");
+                        display_placement_rules(&locations.0);
+                        print!(", Right: ");
+                        display_placement_rules(&locations.1);
 
-                                if !stubs.is_empty() {
-                                    print!(
-                                        ", Cleave points: {}",
-                                        stubs
-                                            .iter()
-                                            .map(|(a, b)| format!(
-                                                "{} + {}",
-                                                a.hill_notation_fancy().yellow(),
-                                                b.hill_notation_fancy().yellow()
-                                            ))
-                                            .join(", ")
-                                    );
-                                }
-                                if !diagnostic.is_empty() {
-                                    print!(
-                                        ", Diagnostic ions: {}",
-                                        diagnostic
-                                            .iter()
-                                            .map(|d| d.0.hill_notation_fancy().green())
-                                            .join(", ")
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                SimpleModification::Gno {
-                    composition,
-                    id,
-                    structure_score,
-                    subsumption_level,
-                } => {
-                    display_id(&id);
-                    if let Some(score) = structure_score {
-                        println!("Structure score: {}", score.to_string().blue());
-                    }
-                    println!("Subsumption: {}", subsumption_level.to_string().green());
-                    match composition {
-                        GnoComposition::Weight(mass) => {
-                            println!(
-                                "Average weight: {}",
-                                display_mass(mass.into_inner(), true, precision)
-                            )
-                        }
-                        GnoComposition::Composition(composition) => {
-                            println!(
-                                "Composition: {}",
-                                composition
+                        if !stubs.is_empty() {
+                            print!(
+                                ", Cleave points: {}",
+                                stubs
                                     .iter()
-                                    .map(|(sug, amount)| format!(
-                                        "{}{amount}",
-                                        sug.to_string().green()
+                                    .map(|(a, b)| format!(
+                                        "{} + {}",
+                                        a.hill_notation_fancy().yellow(),
+                                        b.hill_notation_fancy().yellow()
                                     ))
-                                    .join("")
-                            )
+                                    .join(", ")
+                            );
                         }
-                        GnoComposition::Topology(structure) => {
-                            println!("Structure: {}", structure.to_string().green())
+                        if !diagnostic.is_empty() {
+                            print!(
+                                ", Diagnostic ions: {}",
+                                diagnostic
+                                    .iter()
+                                    .map(|d| d.0.hill_notation_fancy().green())
+                                    .join(", ")
+                            );
                         }
                     }
                 }
-                _ => (),
             }
         }
+        SimpleModification::Gno {
+            composition,
+            id,
+            structure_score,
+            subsumption_level,
+        } => {
+            display_id(id);
+            if let Some(score) = structure_score {
+                println!("Structure score: {}", score.to_string().blue());
+            }
+            println!("Subsumption: {}", subsumption_level.to_string().green());
+            match composition {
+                GnoComposition::Weight(mass) => {
+                    println!(
+                        "Average weight: {}",
+                        display_mass(mass.into_inner(), true, precision)
+                    )
+                }
+                GnoComposition::Composition(composition) => {
+                    println!(
+                        "Composition: {}",
+                        composition
+                            .iter()
+                            .map(|(sug, amount)| format!("{}{amount}", sug.to_string().green()))
+                            .join("")
+                    )
+                }
+                GnoComposition::Topology(structure) => {
+                    println!("Structure: {}", structure.to_string().green())
+                }
+            }
+        }
+        _ => (),
     }
 }
 
