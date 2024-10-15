@@ -1,12 +1,14 @@
 use clap::{Args, Parser};
-use rustyms::imgt::{AlleleSelection, Gene, GeneType, ChainType, Species};
+use rustyms::align::AlignScoring;
+use rustyms::imgt::{AlleleSelection, ChainType, Gene, GeneType, Species};
 use rustyms::modification::SimpleModification;
 use rustyms::system::Mass;
-use rustyms::{ReturnModification, SimpleLinear};
 use rustyms::{
+    align::{self, AlignType},
     placement_rule::*,
-    AminoAcid,  LinearPeptide, Tolerance, align::{AlignType, self},
+    AminoAcid, LinearPeptide, MassMode, Tolerance,
 };
+use rustyms::{ReturnModification, SimpleLinear};
 use std::str::FromStr;
 use std::{collections::HashSet, fmt::Display};
 
@@ -121,12 +123,103 @@ pub struct Cli {
     /// Show listed IMGT genes (with --specific-gene or --imgt) when there is no alignment in fasta format for easy copying
     #[arg(long)]
     pub display_fasta: bool,
+
+    /// Set the mass mode for appropiate steps, use 'monoisotopic', 'average', or 'mostabundant'
+    #[arg(long, value_parser=mass_mode_parser, default_value = "monoisotopic")]
+    pub mass_mode: MassMode,
+
+    /// The score for a mismatch, this is used as the full score of that step.
+    #[arg(long, default_value = "-1")]
+    pub score_mismatch: i8,
+
+    /// The score added to the score for a step if the amino acids are identical but the mass of
+    /// the sequence elements are not the same. This is the case if either of the peptides has a
+    /// modification at this location. The local score for the step is calculated as follows:
+    /// `matrix_score + mass_mismatch`, use a negative number to make this a penalty.
+    #[arg(long, default_value = "-1")]
+    pub score_mass_mismatch: i8,
+
+    /// The base score for mass based steps, added to both rotated and isobaric steps.
+    #[arg(long, default_value = "1")]
+    pub score_mass_base: i8,
+
+    /// The per position score for a rotated step match. The full score is calculated as follows
+    /// `mass_base + rotated * len_a`.
+    #[arg(long, default_value = "3")]
+    pub score_rotated: i8,
+
+    /// The per position score for an isobaric step match. The full score is calculated as follows
+    /// `mass_base + isobaric * (len_a + len_b) / 2`.
+    #[arg(long, default_value = "2")]
+    pub score_isobaric: i8,
+
+    /// The gap start score for affine gaps, this is the score for starting any gap. The total score
+    /// for a full gap will be `gap_start + gep_extend * len`.
+    #[arg(long, default_value = "-4")]
+    pub score_gap_start: i8,
+
+    /// The gap extend for affine gaps.
+    #[arg(long, default_value = "-1")]
+    pub score_gap_extend: i8,
+
+    /// For mass based modification searching limit the modifications to modifications that are allowed on any of these positions.
+    /// Multiple positions can be specified by using this argument mulitple times.
+    #[arg(long, value_parser=positions_parser)]
+    pub positions: Option<Vec<(Vec<AminoAcid>, Position)>>,
+}
+
+impl Cli {
+    pub fn scoring(&self) -> AlignScoring<'static> {
+        AlignScoring::<'static> {
+            mismatch: self.score_mismatch,
+            mass_mismatch: self.score_mass_mismatch,
+            mass_base: self.score_mass_base,
+            rotated: self.score_rotated,
+            isobaric: self.score_isobaric,
+            gap_start: self.score_gap_start,
+            gap_extend: self.score_gap_extend,
+            matrix: self.scoring_matrix.matrix(),
+            tolerance: self.tolerance.convert(),
+            mass_mode: self.mass_mode,
+        }
+    }
+}
+
+fn positions_parser(value: &str) -> Result<(Vec<AminoAcid>, Position), String> {
+    value
+        .split_once('@')
+        .ok_or(format!(
+            "Position definition does not contain the '@' sign to indicate the position: {value}"
+        ))
+        .and_then(|(start, end)| {
+            Ok((
+                start
+                    .chars()
+                    .map(|c| {
+                        AminoAcid::try_from(c).map_err(|()| format!("Invalid amino acid: {c}"))
+                    })
+                    .collect::<Result<Vec<AminoAcid>, String>>()?,
+                Position::from_str(end).map_err(|()| format!("Invalid position: {end}"))?,
+            ))
+        })
+}
+
+fn mass_mode_parser(value: &str) -> Result<MassMode, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "monoisotopic" => Ok(MassMode::Monoisotopic),
+        "average" => Ok(MassMode::Average),
+        "mostabundant" => Ok(MassMode::MostAbundant),
+        _ => Err("Invalid mass mode, use 'monoisotopic', 'average', or 'mostabundant'".to_string()),
+    }
 }
 
 fn chains_parser(value: &str) -> Result<HashSet<ChainType>, String> {
     let mut set = HashSet::new();
     for c in value.chars() {
-        set.insert(ChainType::from_str(c.to_string().as_str()).map_err(|()| format!("Not a valid chain type: {c}"))?);
+        set.insert(
+            ChainType::from_str(c.to_string().as_str())
+                .map_err(|()| format!("Not a valid chain type: {c}"))?,
+        );
     }
     Ok(set)
 }
@@ -134,7 +227,10 @@ fn chains_parser(value: &str) -> Result<HashSet<ChainType>, String> {
 fn genes_parser(value: &str) -> Result<HashSet<GeneType>, String> {
     let mut set = HashSet::new();
     for c in value.chars() {
-        set.insert(GeneType::from_str(c.to_string().as_str()).map_err(|()| format!("Not a valid gene type: {c}"))?);
+        set.insert(
+            GeneType::from_str(c.to_string().as_str())
+                .map_err(|()| format!("Not a valid gene type: {c}"))?,
+        );
     }
     Ok(set)
 }
@@ -143,8 +239,10 @@ fn allele_parser(value: &str) -> Result<AlleleSelection, String> {
     match value.trim().to_lowercase().as_str() {
         "all" => Ok(AlleleSelection::All),
         "first" => Ok(AlleleSelection::First),
-        _ => Err(format!("Not a valid allele selection: {value}, use 'all' or 'first'."))
-    }   
+        _ => Err(format!(
+            "Not a valid allele selection: {value}, use 'all' or 'first'."
+        )),
+    }
 }
 
 #[test]
@@ -204,7 +302,7 @@ pub struct ScoringMatrix {
 }
 
 impl ScoringMatrix {
-    pub fn matrix(&self) -> &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER] {
+    pub fn matrix(&self) -> &'static [[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER] {
         if self.blosum45 {
             align::matrix::BLOSUM45
         } else if self.blosum50 {
@@ -243,14 +341,14 @@ pub struct AlignmentType {
 
     /// Use semi-global alignment, meaning that the first sequence has to match fully, while the second sequence can be longer then the alignment.
     /// When the `--file` or `--imgt` mode is used this flag indicates that the database sequences can align semi globally to the provided sequence.
-    #[arg(short='S', long)]
+    #[arg(short = 'S', long)]
     pub semi_global_a: bool,
 
     /// Use local alignment
     #[arg(short, long)]
     pub local: bool,
 
-    /// Specify the type fully. Specify each position as local `0` or global `1` in the following order: left A, left B, right A, right B. 
+    /// Specify the type fully. Specify each position as local `0` or global `1` in the following order: left A, left B, right A, right B.
     /// An either global can be specified by putting a hyphen on the left or right side, `-xx` is either global left, `xx-` is either global right, `--` is either global.
     /// For example `1001` means global on left A and right B which will make peptide A extend peptide B.
     #[arg(long, value_parser=type_parser, allow_hyphen_values=true)]
@@ -284,7 +382,7 @@ pub struct SecondSelection {
     #[arg(short, long)]
     pub file: Option<String>,
 
-    /// A csv file of pairs of sequences to score it returns a csv file with statistics added as last columns. 
+    /// A csv file of pairs of sequences to score it returns a csv file with statistics added as last columns.
     /// The requirement is that the pair columns have to be called "a" and "b".
     #[arg(long)]
     pub csv: Option<String>,
@@ -335,7 +433,10 @@ fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
     }
 }
 fn peptide_parser(input: &str) -> Result<LinearPeptide<SimpleLinear>, String> {
-    LinearPeptide::pro_forma(input, None).map_err(|e| e.to_string())?.into_simple_linear().ok_or("Not a simple peptide".to_string())
+    LinearPeptide::pro_forma(input, None)
+        .map_err(|e| e.to_string())?
+        .into_simple_linear()
+        .ok_or("Not a simple peptide".to_string())
 }
 fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
     input
@@ -346,7 +447,9 @@ fn amino_acids_parser(input: &str) -> Result<AminoAcids, String> {
 type AminoAcids = Vec<AminoAcid>;
 
 fn type_parser(input: &str) -> Result<AlignType, String> {
-    input.parse().map_err(|()| format!("Not a valid alignment type: '{input}'"))
+    input
+        .parse()
+        .map_err(|()| format!("Not a valid alignment type: '{input}'"))
 }
 
 #[derive(Debug, Clone)]
@@ -452,7 +555,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
         split(input).into_iter()
             .map(|m| {
                 if let Some((head, tail)) = m.split_once('@') {
-                    let modification = 
+                    let modification =
                     SimpleModification::try_from(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
                         Ok(d) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
@@ -487,13 +590,19 @@ fn modification_parse(input: &str) -> Result<SimpleModification, String> {
     if input.is_empty() {
         Err("Empty".to_string())
     } else {
-        SimpleModification::try_from(input, 0..input.len(), &mut Vec::new(), &mut Vec::new(), None)
-            .map(|m| match m {
-                ReturnModification::Defined(d) => d,
-                _ => {
-                    panic!("Can not define ambiguous modifications for the modifications parameter")
-                }
-            })
-            .map_err(|err| err.to_string())
+        SimpleModification::try_from(
+            input,
+            0..input.len(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+            None,
+        )
+        .map(|m| match m {
+            ReturnModification::Defined(d) => d,
+            _ => {
+                panic!("Can not define ambiguous modifications for the modifications parameter")
+            }
+        })
+        .map_err(|err| err.to_string())
     }
 }

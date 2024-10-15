@@ -437,7 +437,6 @@ pub fn show_alignment_header<A: AtMax<Linear>, B: AtMax<Linear>>(
             "Equal mass".yellow().to_string()
         } else {
             let (num, unit) = relative_notation(alignment.ppm().value * 1e6, 3); // ratio to ppm
-            format!("{} {}", num.yellow(), unit);
             format!("Mass difference: {} {} {}",
                 display_mass(alignment.mass_difference(), true, precision),
                 num.yellow(),

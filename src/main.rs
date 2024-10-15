@@ -12,9 +12,10 @@ use rustyms::{
     modification::{
         GnoComposition, LinkerSpecificity, ModificationId, Ontology, SimpleModification,
     },
+    modification_search_formula, modification_search_glycan, modification_search_mass,
     placement_rule::*,
-    AminoAcid, AtMax, Chemical, LinearPeptide, ModificationSearchResult, MolecularFormula, Multi,
-    SimpleLinear, Tolerance, UnAmbiguous,
+    AminoAcid, AtMax, Chemical, LinearPeptide, MassMode, MolecularFormula, Multi, SimpleLinear,
+    Tolerance, UnAmbiguous,
 };
 use std::{
     collections::HashSet,
@@ -48,9 +49,8 @@ fn main() {
         let alignment = align(
             &a,
             &b,
-            args.tolerance,
+            args.scoring(),
             args.alignment_type.ty(),
-            args.scoring_matrix.matrix(),
             args.alignment_kind,
         );
         show_annotated_mass_alignment(&alignment, None, false, false, ("A", "B"), &args);
@@ -68,9 +68,8 @@ fn main() {
                 let alignment = align(
                     &sequence,
                     &search_sequence,
-                    args.tolerance,
+                    args.scoring(),
                     args.alignment_type.ty(),
-                    args.scoring_matrix.matrix(),
                     args.alignment_kind,
                 );
                 (seq, alignment.to_owned())
@@ -141,9 +140,8 @@ fn main() {
             let alignment = align(
                 seq.sequence,
                 &seq_b,
-                args.tolerance,
+                args.scoring(),
                 args.alignment_type.ty(),
-                args.scoring_matrix.matrix(),
                 args.alignment_kind,
             );
             (seq, alignment)
@@ -216,8 +214,7 @@ fn main() {
             args.species.map(|s| HashSet::from([s])),
             args.chains.clone(),
             args.allele,
-            args.tolerance,
-            args.scoring_matrix.matrix(),
+            args.scoring(),
             args.number_of_hits,
             args.alignment_kind,
         );
@@ -287,9 +284,8 @@ fn main() {
             let alignment = align(
                 allele.sequence,
                 &b,
-                args.tolerance,
+                args.scoring(),
                 args.alignment_type.ty(),
-                args.scoring_matrix.matrix(),
                 args.alignment_kind,
             );
             println!(
@@ -318,7 +314,13 @@ fn main() {
                 .unwrap(),
         )
     } else if let Some(modification) = &args.modification {
-        modification_stats(modification, args.tolerance, args.full_number);
+        modification_stats(
+            modification,
+            args.tolerance,
+            args.full_number,
+            args.mass_mode,
+            args.positions.as_deref(),
+        );
     } else if let Some(file) = &args.second.csv {
         let csv = rustyms::csv::parse_csv(file, b',', None).expect("Failed to parse CSV file");
         let output = std::fs::File::create(
@@ -356,9 +358,8 @@ fn main() {
             let alignment = align(
                 &a,
                 &b,
-                args.tolerance,
+                args.scoring(),
                 args.alignment_type.ty(),
-                args.scoring_matrix.matrix(),
                 args.alignment_kind,
             );
             let stats = alignment.stats();
@@ -425,7 +426,7 @@ fn single_stats(args: &Cli, seq: LinearPeptide<SimpleLinear>) {
         .into_option()
         .expect("No masses for peptide")
         .0
-        .monoisotopic_mass();
+        .mass(args.mass_mode);
     println!();
     if multiple {
         println!("{}", "Multiple precursor masses found, it will generate isobaric options based on the lowest bare mass".dimmed().italic());
@@ -557,38 +558,41 @@ fn modification_stats(
     modification: &SimpleModification,
     tolerance: Tolerance<Mass>,
     full_number: bool,
+    mass_mode: MassMode,
+    positions: Option<&[(Vec<AminoAcid>, Position)]>,
 ) {
     let precision = if full_number {
         None
     } else {
         Some(NUMBER_PRECISION)
     };
-    match SimpleModification::search(
-        modification,
-        tolerance,
-        rustyms::MassMode::Monoisotopic,
-        None,
-    ) {
-        ModificationSearchResult::Mass(_mass, tolerance, mode, modifications) => {
+    match modification {
+        SimpleModification::Mass(m)
+        | SimpleModification::Gno {
+            composition: GnoComposition::Weight(m),
+            ..
+        } => {
             println!(
-                "All ontology modifications close to the given {mode}: {}",
+                "All ontology modifications close to the given {mass_mode}: {}",
                 format!("tolerance: {tolerance}").dimmed()
             );
             let mut data = vec![[
                 "Name".to_string(),
                 "Id".to_string(),
-                "Monoisotopic mass".to_string(),
+                mass_mode.to_string(),
                 "Formula".to_string(),
             ]];
-            for (ontology, id, _name, modification) in modifications {
+            for (ontology, id, _name, modification) in
+                modification_search_mass(m.into_inner(), tolerance, positions, mass_mode, None)
+            {
                 data.push([
                     modification.to_string(),
                     format!(
                         "{}{}",
-                        id.map_or(String::new(), |id| format!("{id}:")),
-                        ontology.name()
+                        ontology.name(),
+                        id.map_or(String::new(), |id| format!(":{id}")),
                     ),
-                    display_mass(modification.formula().monoisotopic_mass(), false, precision),
+                    display_mass(modification.formula().mass(mass_mode), false, precision),
                     modification.formula().hill_notation_fancy(),
                 ])
             }
@@ -607,12 +611,12 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        ModificationSearchResult::Formula(_, modifications) => {
+        SimpleModification::Formula(f) => {
             display_single_mod(modification, precision);
 
             println!("\nAll ontology modifications with the same formula:");
             let mut data = vec![["Name".to_string(), "Id".to_string()]];
-            for (ontology, id, _name, modification) in modifications {
+            for (ontology, id, _name, modification) in modification_search_formula(f, None) {
                 data.push([
                     modification.to_string(),
                     format!(
@@ -635,12 +639,16 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        ModificationSearchResult::Glycan(_, modifications) => {
+        SimpleModification::Glycan(ref g)
+        | SimpleModification::Gno {
+            composition: GnoComposition::Composition(ref g),
+            ..
+        } => {
             display_single_mod(modification, precision);
 
             println!("\nAll GNOme modifications with the same monosaccharide composition:");
             let mut data = vec![["Name".to_string(), "Definition".to_string()]];
-            for (_ontology, _id, _name, modification) in modifications {
+            for (_ontology, _id, _name, modification) in modification_search_glycan(g, true) {
                 if let SimpleModification::Gno {
                     composition: GnoComposition::Topology(structure),
                     ..
@@ -671,17 +679,14 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        ModificationSearchResult::Single(modification) => {
-            display_single_mod(&modification, precision)
-        }
+        modification => display_single_mod(modification, precision),
     }
 }
 
 fn display_single_mod(modification: &SimpleModification, precision: Option<usize>) {
-    let monoisotopic = modification.formula().monoisotopic_mass();
     println!(
         "Full mass: {} {} {} {}",
-        display_mass(monoisotopic, true, precision),
+        display_mass(modification.formula().monoisotopic_mass(), true, precision),
         display_mass(modification.formula().average_weight(), true, precision),
         display_mass(modification.formula().most_abundant_mass(), true, precision),
         "(monoisotopic | average | most abundant)".dimmed(),
@@ -802,12 +807,42 @@ fn display_single_mod(modification: &SimpleModification, precision: Option<usize
             id,
             structure_score,
             subsumption_level,
+            motif,
+            taxonomy,
+            glycomeatlas,
         } => {
             display_id(id);
             if let Some(score) = structure_score {
                 println!("Structure score: {}", score.to_string().blue());
             }
             println!("Subsumption: {}", subsumption_level.to_string().green());
+            println!(
+                "Motif: {}",
+                motif
+                    .iter()
+                    .map(|(name, id)| format!("{name}:{id}"))
+                    .join(", ")
+            );
+            println!(
+                "Taxonomy: {}",
+                taxonomy
+                    .iter()
+                    .map(|(name, id)| format!("{name}:{id}"))
+                    .join(", ")
+            );
+            println!(
+                "Glycomeatlas: {}",
+                glycomeatlas
+                    .iter()
+                    .map(|(species, places)| format!(
+                        "{species}:{}",
+                        places
+                            .iter()
+                            .map(|(place, id)| format!("{place}({id})"))
+                            .join(", ")
+                    ))
+                    .join("\n")
+            );
             match composition {
                 GnoComposition::Weight(mass) => {
                     println!(
@@ -898,11 +933,14 @@ fn display_id(id: &ModificationId) {
 }
 
 fn display_germline(allele: Allele, args: &Cli) {
+    let scoring = AlignScoring::<'static> {
+        matrix: rustyms::align::matrix::BLOSUM90,
+        ..Default::default()
+    };
     let alignment = rustyms::align::align::<1, UnAmbiguous, UnAmbiguous>(
         allele.sequence,
         allele.sequence,
-        rustyms::align::matrix::BLOSUM90,
-        Tolerance::new_ppm(10.0),
+        scoring,
         rustyms::align::AlignType::GLOBAL,
     );
     if args.display_fasta {
@@ -933,19 +971,18 @@ fn display_germline(allele: Allele, args: &Cli) {
 fn align<'a, A: AtMax<SimpleLinear>, B: AtMax<SimpleLinear>>(
     seq_a: &'a LinearPeptide<A>,
     seq_b: &'a LinearPeptide<B>,
-    tolerance: Tolerance<Mass>,
+    scoring: AlignScoring<'a>,
     ty: AlignType,
-    matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
     kind: AlignmentKind,
 ) -> Alignment<'a, A, B> {
     if kind.normal {
-        rustyms::align::align::<1, A, B>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<1, A, B>(seq_a, seq_b, scoring, ty)
     } else if kind.mass_based_huge {
-        rustyms::align::align::<{ u16::MAX }, A, B>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<{ u16::MAX }, A, B>(seq_a, seq_b, scoring, ty)
     } else if kind.mass_based_long {
-        rustyms::align::align::<8, A, B>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<8, A, B>(seq_a, seq_b, scoring, ty)
     } else {
-        rustyms::align::align::<4, A, B>(seq_a, seq_b, matrix, tolerance, ty)
+        rustyms::align::align::<4, A, B>(seq_a, seq_b, scoring, ty)
     }
 }
 
@@ -954,8 +991,7 @@ fn consecutive_align(
     species: Option<HashSet<imgt::Species>>,
     chains: Option<HashSet<imgt::ChainType>>,
     allele: imgt::AlleleSelection,
-    tolerance: Tolerance<Mass>,
-    matrix: &[[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER],
+    scoring: AlignScoring,
     return_number: usize,
     kind: AlignmentKind,
 ) -> Vec<
@@ -993,8 +1029,7 @@ fn consecutive_align(
             species.clone(),
             chains.clone(),
             allele,
-            tolerance,
-            matrix,
+            scoring,
             return_number,
         )
     } else if kind.mass_based_huge {
@@ -1026,8 +1061,7 @@ fn consecutive_align(
             species.clone(),
             chains.clone(),
             allele,
-            tolerance,
-            matrix,
+            scoring,
             return_number,
         )
     } else if kind.mass_based_long {
@@ -1059,8 +1093,7 @@ fn consecutive_align(
             species.clone(),
             chains.clone(),
             allele,
-            tolerance,
-            matrix,
+            scoring,
             return_number,
         )
     } else {
@@ -1092,8 +1125,7 @@ fn consecutive_align(
             species.clone(),
             chains.clone(),
             allele,
-            tolerance,
-            matrix,
+            scoring,
             return_number,
         )
     }
