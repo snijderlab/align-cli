@@ -219,7 +219,7 @@ fn main() {
             args.alignment_kind,
         );
 
-        for gene in &scores {
+        for gene in &scores.alignments {
             let mut data = vec![[
                 String::new(),
                 "Species".to_string(),
@@ -263,6 +263,7 @@ fn main() {
         }
 
         let tops = scores
+            .alignments
             .into_iter()
             .map(|options| options[0].clone())
             .collect_vec();
@@ -994,12 +995,7 @@ fn consecutive_align(
     scoring: AlignScoring,
     return_number: usize,
     kind: AlignmentKind,
-) -> Vec<
-    Vec<(
-        Allele<'static>,
-        Alignment<'static, UnAmbiguous, SimpleLinear>,
-    )>,
-> {
+) -> ConsecutiveAlignment<'static, SimpleLinear> {
     if kind.normal {
         par_consecutive_align::<1, SimpleLinear>(
             seq,

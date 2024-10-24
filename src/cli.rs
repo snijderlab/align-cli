@@ -92,11 +92,11 @@ pub struct Cli {
     #[arg(long, value_parser=amino_acids_parser)]
     pub amino_acids: Option<AminoAcids>,
 
-    /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, eg `10.0ppm` or `2.3da`
+    /// The tolerance for the isobaric set search and the definition for isobaric sets in the alignment, use `<x>ppm` or `<x>da` to control the unit, e.g. `10.0ppm` or `2.3da`
     #[arg(short, long, default_value_t = Tolerance::new_ppm(10.0.into()), value_parser=mass_tolerance_parse)]
     pub tolerance: Tolerance<Mass>,
 
-    /// A modification you want details on, if it is a mass shift modification eg `+58.01` it will show all predefined modifications that are within the tolerance of this mass
+    /// A modification you want details on, if it is a mass shift modification e.g. `+58.01` it will show all predefined modifications that are within the tolerance of this mass
     #[arg(short, long, value_parser=modification_parse, allow_hyphen_values=true)]
     pub modification: Option<SimpleModification>,
 
@@ -124,7 +124,7 @@ pub struct Cli {
     #[arg(long)]
     pub display_fasta: bool,
 
-    /// Set the mass mode for appropiate steps, use 'monoisotopic', 'average', or 'mostabundant'
+    /// Set the mass mode for appropriate steps, use 'monoisotopic', 'average', or 'mostabundant'
     #[arg(long, value_parser=mass_mode_parser, default_value = "monoisotopic")]
     pub mass_mode: MassMode,
 
@@ -163,7 +163,7 @@ pub struct Cli {
     pub score_gap_extend: i8,
 
     /// For mass based modification searching limit the modifications to modifications that are allowed on any of these positions.
-    /// Multiple positions can be specified by using this argument mulitple times.
+    /// Multiple positions can be specified by using this argument multiple times.
     #[arg(long, value_parser=positions_parser)]
     pub positions: Option<Vec<(Vec<AminoAcid>, Position)>>,
 }
@@ -254,7 +254,7 @@ fn verify_cli() {
 #[derive(Args, Debug, Clone, Copy)]
 #[group(multiple = false)]
 pub struct AlignmentKind {
-    /// Use normal alignment (instead of the default of Mass alignment) this uses Smith Waterman or Needleman Wunsch algorithms (based on the alignment mode)
+    /// Use normal alignment (instead of the default of Mass alignment) this uses Smith Waterman or Needleman-Wunsch algorithms (based on the alignment mode)
     /// using the same modified BLOSUM62 scoring table as used in mass based alignment. Note: this is the same mass based alignment algorithm but set to a
     /// maximal length of isobaric sets of 1, meaning it will still handle modifications and show I/L as isobaric.
     #[arg(long)]
