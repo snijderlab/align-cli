@@ -399,6 +399,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "identity-hash"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfdd7caa900436d8f13b2346fe10257e0c05c1f1f9e351f4f5d57c03bd5f45da"
+
+[[package]]
 name = "indexmap"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -509,9 +515,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.33.0"
+version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcde6770b2d9ffa56ab32c6efeb9c9a5ebfe456649392e24a8f704ff4b6a46f2"
+checksum = "486c26164313ebdc56709f287d1cbf914aed2ad7468a3247974c707d6466b171"
 dependencies = [
  "base16ct",
  "base64-simd",
@@ -519,6 +525,7 @@ dependencies = [
  "bytemuck",
  "chrono",
  "flate2",
+ "identity-hash",
  "indexmap",
  "lazy_static",
  "log",
@@ -615,9 +622,9 @@ checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
 
 [[package]]
 name = "ordered-float"
-version = "4.3.0"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44d501f1a72f71d3c063a6bbc8f7271fa73aa09fe5d6283b6571e2ed176a2537"
+checksum = "c65ee1f9701bf938026630b455d5315f490640234259037edb259798b3bcf85e"
 dependencies = [
  "num-traits",
  "rand",

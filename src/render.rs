@@ -20,6 +20,7 @@ enum StepType {
     Match,
     Mismatch,
     Special,
+    MassMismatch,
 }
 
 pub fn show_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>(
@@ -222,7 +223,7 @@ fn show_alignment_inner<A, B>(
         let ty = match (step.match_type, step.step_a, step.step_b) {
             (MatchType::Isobaric, _, _) => StepType::Special, // Catch any 1/1 isobaric sets before they are counted as Match/Mismatch
             (MatchType::FullIdentity, _, _) => StepType::Match,
-            (MatchType::IdentityMassMismatch, _, _) => StepType::Match,
+            (MatchType::IdentityMassMismatch, _, _) => StepType::MassMismatch,
             (MatchType::Mismatch, _, _) => StepType::Mismatch,
             (_, 0, 1) => StepType::Insertion,
             (_, 1, 0) => StepType::Deletion,
@@ -232,6 +233,7 @@ fn show_alignment_inner<A, B>(
             StepType::Insertion => (Some(Color::Yellow), "+"),
             StepType::Deletion => (Some(Color::Yellow), "+"),
             StepType::Match => (None, " "),
+            StepType::MassMismatch => (Some(Color::Red), "m"),
             StepType::Mismatch => (Some(Color::Red), "⨯"),
             StepType::Special => (Some(Color::Yellow), "-"), // ⇤⇥ ⤚---⤙ ├─┤ ║ ⤚⤙ l╴r╶
         };
