@@ -11,6 +11,7 @@ use rustyms::{
     find_isobaric_sets, imgt,
     modification::{
         GnoComposition, LinkerSpecificity, ModificationId, Ontology, SimpleModification,
+        SimpleModificationInner,
     },
     modification_search_formula, modification_search_glycan, modification_search_mass,
     placement_rule::*,
@@ -53,7 +54,14 @@ fn main() {
             args.alignment_type.ty(),
             args.alignment_kind,
         );
-        show_annotated_mass_alignment(&alignment, None, false, false, ("A", "B"), &args);
+        show_annotated_mass_alignment::<_, _, Allele>(
+            &alignment,
+            None,
+            false,
+            false,
+            ("A", "B"),
+            &args,
+        );
     } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
         let sequences = rustyms::identification::FastaData::parse_file(path).unwrap();
         let search_sequence = LinearPeptide::pro_forma(b, None)
@@ -63,8 +71,7 @@ fn main() {
         let mut alignments: Vec<_> = sequences
             .into_par_iter()
             .map(|seq| {
-                let sequence: LinearPeptide<SimpleLinear> =
-                    seq.peptide.sequence().iter().cloned().collect();
+                let sequence = seq.peptide().clone();
                 let alignment = align(
                     &sequence,
                     &search_sequence,
@@ -74,6 +81,7 @@ fn main() {
                 );
                 (seq, alignment.to_owned())
             })
+            .filter(|s| !s.1.normalised_score().is_nan())
             .collect();
         alignments.sort_unstable_by(|a, b| b.1.cmp(&a.1));
         let selected: Vec<_> = alignments.into_iter().take(args.number_of_hits).collect();
@@ -90,7 +98,7 @@ fn main() {
             let stats = alignment.stats();
             data.push([
                 (rank + 1).to_string(),
-                fasta.id.clone(),
+                fasta.identifier().to_string(),
                 alignment.score().absolute.to_string(),
                 format!("{:.3}", alignment.normalised_score()),
                 format!("{:.2}%", stats.identity() * 100.0),
@@ -114,14 +122,14 @@ fn main() {
         println!(
             "{} ({})",
             "Alignment for the best match".underline().italic(),
-            selected[0].0.id.dimmed()
+            selected[0].0.identifier().to_string().dimmed()
         );
         show_annotated_mass_alignment(
             &selected[0].1,
-            None,
+            Some(&selected[0].0),
             false,
             false,
-            (&selected[0].0.id, "Query"),
+            (&selected[0].0.identifier().to_string(), "Query"),
             &args,
         );
     } else if let (Some(x), true) = (&args.a, &args.second.imgt) {
@@ -146,6 +154,7 @@ fn main() {
             );
             (seq, alignment)
         })
+        .filter(|s| !s.1.normalised_score().is_nan())
         .collect();
         alignments
             .sort_unstable_by(|a, b| b.1.score().normalised.total_cmp(&a.1.score().normalised));
@@ -567,9 +576,9 @@ fn modification_stats(
     } else {
         Some(NUMBER_PRECISION)
     };
-    match modification {
-        SimpleModification::Mass(m)
-        | SimpleModification::Gno {
+    match &**modification {
+        SimpleModificationInner::Mass(m)
+        | SimpleModificationInner::Gno {
             composition: GnoComposition::Weight(m),
             ..
         } => {
@@ -612,7 +621,7 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        SimpleModification::Formula(f) => {
+        SimpleModificationInner::Formula(f) => {
             display_single_mod(modification, precision);
 
             println!("\nAll ontology modifications with the same formula:");
@@ -640,8 +649,8 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        SimpleModification::Glycan(ref g)
-        | SimpleModification::Gno {
+        SimpleModificationInner::Glycan(ref g)
+        | SimpleModificationInner::Gno {
             composition: GnoComposition::Composition(ref g),
             ..
         } => {
@@ -650,16 +659,16 @@ fn modification_stats(
             println!("\nAll GNOme modifications with the same monosaccharide composition:");
             let mut data = vec![["Name".to_string(), "Definition".to_string()]];
             for (_ontology, _id, _name, modification) in modification_search_glycan(g, true) {
-                if let SimpleModification::Gno {
+                if let SimpleModificationInner::Gno {
                     composition: GnoComposition::Topology(structure),
                     ..
-                } = &modification
+                } = &*modification
                 {
                     data.push([modification.to_string(), structure.to_string()])
-                } else if let SimpleModification::Gno {
+                } else if let SimpleModificationInner::Gno {
                     composition: GnoComposition::Composition(composition),
                     ..
-                } = &modification
+                } = &*modification
                 {
                     data.push([
                         modification.to_string(),
@@ -684,7 +693,7 @@ fn modification_stats(
     }
 }
 
-fn display_single_mod(modification: &SimpleModification, precision: Option<usize>) {
+fn display_single_mod(modification: &SimpleModificationInner, precision: Option<usize>) {
     println!(
         "Full mass: {} {} {} {}",
         display_mass(modification.formula().monoisotopic_mass(), true, precision),
@@ -699,7 +708,7 @@ fn display_single_mod(modification: &SimpleModification, precision: Option<usize
         );
     }
     match modification {
-        SimpleModification::Database {
+        SimpleModificationInner::Database {
             specificities, id, ..
         } => {
             display_id(id);
@@ -732,7 +741,7 @@ fn display_single_mod(modification: &SimpleModification, precision: Option<usize
                 println!();
             }
         }
-        SimpleModification::Linker {
+        SimpleModificationInner::Linker {
             specificities,
             id,
             length,
@@ -803,7 +812,7 @@ fn display_single_mod(modification: &SimpleModification, precision: Option<usize
                 }
             }
         }
-        SimpleModification::Gno {
+        SimpleModificationInner::Gno {
             composition,
             id,
             structure_score,

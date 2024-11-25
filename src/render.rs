@@ -1,7 +1,8 @@
 use colored::{Color, Colorize, Styles};
 use itertools::Itertools;
 use rustyms::align::Alignment;
-use rustyms::imgt::{Allele, Annotation, Region};
+use rustyms::identification::{AnnotatedPeptide, Annotation, Region};
+use rustyms::imgt::Allele;
 use rustyms::system::Mass;
 use rustyms::{align::MatchType, Tolerance};
 use rustyms::{AminoAcid, AtMax, Linear, LinearPeptide};
@@ -23,9 +24,13 @@ enum StepType {
     MassMismatch,
 }
 
-pub fn show_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>(
+pub fn show_annotated_mass_alignment<
+    A: AtMax<Linear>,
+    B: AtMax<Linear>,
+    Annotated: AnnotatedPeptide,
+>(
     alignment: &Alignment<'_, A, B>,
-    imgt: Option<&Allele>,
+    imgt: Option<&Annotated>,
     only_display_a: bool,
     omit_headers: bool,
     line_names: (
@@ -99,10 +104,10 @@ pub fn show_chained_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>
     writer.flush();
 }
 
-fn show_alignment_inner<A, B>(
+fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
     writer: &mut CombinedLines,
     alignment: &Alignment<'_, A, B>,
-    imgt: Option<&Allele>,
+    imgt: Option<&Annotated>,
     context: bool,
     start_context_override: Option<Region>,
     room_on_end: bool,
@@ -116,7 +121,7 @@ fn show_alignment_inner<A, B>(
     let mut number_shift_back = 1;
     let mut number_tail = number_tail;
     let mut is_number = false;
-    let mut last_region = start_context_override;
+    let mut last_region = start_context_override.as_ref();
 
     let mut header = |a: usize,
                       len: usize,
@@ -127,12 +132,12 @@ fn show_alignment_inner<A, B>(
                       mut number_shift_back: usize,
                       room_on_end: bool,
                       skip_first: bool| {
-        let region = imgt.and_then(|imgt| imgt.region(a + step));
+        let region = imgt.and_then(|imgt| imgt.get_region(a + step));
         if let Some(region) = region {
             if region.1
                 && number_tail.is_empty()
                 && last_region != Some(region.0)
-                && !(skip_first && last_region == start_context_override)
+                && !(skip_first && last_region == start_context_override.as_ref())
             {
                 number_tail = format!("{} ", region.0).chars().rev().collect();
 
@@ -184,17 +189,21 @@ fn show_alignment_inner<A, B>(
                 is_number,
                 number_shift_back,
                 room_on_end,
-                start_context_override.is_some(),
+                start_context_override.as_ref().is_some(),
             );
             let base_style = start_context_override
+                .as_ref()
                 .map(|_| Styling::none())
                 .unwrap_or(Styling::with_style(Styles::Dimmed));
 
             writer.add_column(
-                start_context_override.map(|_| "").unwrap_or(&a_name),
-                start_context_override.and_then(|r| r.fg_color()),
+                start_context_override
+                    .as_ref()
+                    .map(|_| "")
+                    .unwrap_or(&a_name),
+                start_context_override.as_ref().and_then(|r| r.fg_color()),
                 None,
-                start_context_override.and_then(|r| r.bg_color()),
+                start_context_override.as_ref().and_then(|r| r.bg_color()),
                 (number_tail.pop().unwrap_or(' '), base_style.clone()),
                 (
                     a_index.map_or(' ', |a| alignment.seq_a().sequence()[a].aminoacid.char()),
@@ -238,7 +247,7 @@ fn show_alignment_inner<A, B>(
             StepType::Special => (Some(Color::Yellow), "-"), // ⇤⇥ ⤚---⤙ ├─┤ ║ ⤚⤙ l╴r╶
         };
 
-        let region = imgt.and_then(|imgt| imgt.region(a + step.step_a as usize));
+        let region = imgt.and_then(|imgt| imgt.get_region(a + step.step_a as usize));
         let len = step.step_a.max(step.step_b) as usize;
 
         let mut state = 0;
@@ -320,8 +329,9 @@ fn show_alignment_inner<A, B>(
                 (
                     a_str[s],
                     Styling::none()
-                        .fg(imgt
-                            .and_then(|imgt| imgt.annotations(a).next().and_then(|a| a.fg_color())))
+                        .fg(imgt.and_then(|imgt| {
+                            imgt.get_annotations(a).next().and_then(|a| a.fg_color())
+                        }))
                         .or_fg(
                             a_glycan
                                 .contains(&a)
@@ -405,7 +415,7 @@ fn show_alignment_inner<A, B>(
             );
         }
     }
-    (number_tail, last_region)
+    (number_tail, last_region.cloned())
 }
 
 pub fn show_alignment_header<A: AtMax<Linear>, B: AtMax<Linear>>(

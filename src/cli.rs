@@ -1,7 +1,7 @@
 use clap::{Args, Parser};
 use rustyms::align::AlignScoring;
 use rustyms::imgt::{AlleleSelection, ChainType, Gene, GeneType, Species};
-use rustyms::modification::SimpleModification;
+use rustyms::modification::{SimpleModification, SimpleModificationInner};
 use rustyms::system::Mass;
 use rustyms::{
     align::{self, AlignType},
@@ -129,37 +129,37 @@ pub struct Cli {
     pub mass_mode: MassMode,
 
     /// The score for a mismatch, this is used as the full score of that step.
-    #[arg(long, default_value = "-1")]
+    #[arg(long, default_value = "-1", allow_hyphen_values = true)]
     pub score_mismatch: i8,
 
     /// The score added to the score for a step if the amino acids are identical but the mass of
     /// the sequence elements are not the same. This is the case if either of the peptides has a
     /// modification at this location. The local score for the step is calculated as follows:
     /// `matrix_score + mass_mismatch`, use a negative number to make this a penalty.
-    #[arg(long, default_value = "-1")]
+    #[arg(long, default_value = "-1", allow_hyphen_values = true)]
     pub score_mass_mismatch: i8,
 
     /// The base score for mass based steps, added to both rotated and isobaric steps.
-    #[arg(long, default_value = "1")]
+    #[arg(long, default_value = "1", allow_hyphen_values = true)]
     pub score_mass_base: i8,
 
     /// The per position score for a rotated step match. The full score is calculated as follows
     /// `mass_base + rotated * len_a`.
-    #[arg(long, default_value = "3")]
+    #[arg(long, default_value = "3", allow_hyphen_values = true)]
     pub score_rotated: i8,
 
     /// The per position score for an isobaric step match. The full score is calculated as follows
     /// `mass_base + isobaric * (len_a + len_b) / 2`.
-    #[arg(long, default_value = "2")]
+    #[arg(long, default_value = "2", allow_hyphen_values = true)]
     pub score_isobaric: i8,
 
     /// The gap start score for affine gaps, this is the score for starting any gap. The total score
     /// for a full gap will be `gap_start + gep_extend * len`.
-    #[arg(long, default_value = "-4")]
+    #[arg(long, default_value = "-4", allow_hyphen_values = true)]
     pub score_gap_start: i8,
 
     /// The gap extend for affine gaps.
-    #[arg(long, default_value = "-1")]
+    #[arg(long, default_value = "-1", allow_hyphen_values = true)]
     pub score_gap_extend: i8,
 
     /// For mass based modification searching limit the modifications to modifications that are allowed on any of these positions.
@@ -556,7 +556,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
             .map(|m| {
                 if let Some((head, tail)) = m.split_once('@') {
                     let modification =
-                    SimpleModification::try_from(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
+                    SimpleModificationInner::try_from(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
                         Ok(d) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
@@ -574,7 +574,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
                         };
                     Ok((modification, Some(rule)))
                 } else {
-                    SimpleModification::try_from(m, 0..m.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
+                    SimpleModificationInner::try_from(m, 0..m.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
                         Ok((d, None)) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
@@ -590,7 +590,7 @@ fn modification_parse(input: &str) -> Result<SimpleModification, String> {
     if input.is_empty() {
         Err("Empty".to_string())
     } else {
-        SimpleModification::try_from(
+        SimpleModificationInner::try_from(
             input,
             0..input.len(),
             &mut Vec::new(),
