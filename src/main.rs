@@ -282,6 +282,7 @@ fn main() {
             args.line_width,
             args.context,
             args.full_number,
+            args.generate_annotation,
         );
     } else if let (Some(x), Some((gene, allele)), Some(species)) =
         (&args.a, &args.second.specific_gene, &args.species)

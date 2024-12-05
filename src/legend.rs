@@ -1,12 +1,12 @@
 use colored::Color;
-use rustyms::identification;
+use rustyms::peptide;
 
 pub trait Legend {
     fn fg_color(&self) -> Option<Color>;
     fn bg_color(&self) -> Option<Color>;
 }
 
-impl Legend for identification::Annotation {
+impl Legend for peptide::Annotation {
     fn fg_color(&self) -> Option<Color> {
         match self {
             Self::Conserved => Some(Color::Blue),
@@ -19,7 +19,7 @@ impl Legend for identification::Annotation {
     }
 }
 
-impl Legend for identification::Region {
+impl Legend for peptide::Region {
     fn fg_color(&self) -> Option<Color> {
         match self {
             Self::ComplementarityDeterminingRegion(_) => Some(Color::Black),

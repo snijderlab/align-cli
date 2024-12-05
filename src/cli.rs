@@ -124,6 +124,10 @@ pub struct Cli {
     #[arg(long)]
     pub display_fasta: bool,
 
+    /// Generate annotation for a sequence based on domain gap align
+    #[arg(long)]
+    pub generate_annotation: bool,
+
     /// Set the mass mode for appropriate steps, use 'monoisotopic', 'average', or 'mostabundant'
     #[arg(long, value_parser=mass_mode_parser, default_value = "monoisotopic")]
     pub mass_mode: MassMode,

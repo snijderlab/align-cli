@@ -1,8 +1,8 @@
 use colored::{Color, Colorize, Styles};
 use itertools::Itertools;
 use rustyms::align::Alignment;
-use rustyms::identification::{AnnotatedPeptide, Annotation, Region};
 use rustyms::imgt::Allele;
+use rustyms::peptide::{AnnotatedPeptide, Annotation, Region};
 use rustyms::system::Mass;
 use rustyms::{align::MatchType, Tolerance};
 use rustyms::{AminoAcid, AtMax, Linear, LinearPeptide};
@@ -69,6 +69,7 @@ pub fn show_chained_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>
     line_width: usize,
     context: bool,
     full_number: bool,
+    generate_annotation: bool,
 ) {
     let mut start = 0;
     for alignment in alignments {
@@ -102,6 +103,34 @@ pub fn show_chained_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>
         );
     }
     writer.flush();
+
+    if generate_annotation {
+        // Show annotation and regions for fasta
+        // let mut annotations = Vec::new();
+        let mut regions = Vec::new();
+        let mut a_regions = alignments.iter().flat_map(|(a, _)| a.regions).collect_vec(); // TODO: this misses unmatched regions between alignments
+        a_regions.reverse();
+
+        let mut len_a = 0;
+        let mut len_b = 0;
+        for path in alignments.iter().flat_map(|(_, a)| a.path()) {
+            len_a += path.step_a as usize;
+            len_b += path.step_b as usize;
+            if let Some((r, l)) = a_regions.last() {
+                if *l <= len_a {
+                    regions.push((r.clone(), len_b));
+                    a_regions.pop();
+                    len_a -= l;
+                    len_b = 0;
+                }
+            }
+        }
+
+        println!(
+            "REGIONS={}",
+            regions.iter().map(|(r, l)| format!("{r}:{l}")).join(";")
+        );
+    }
 }
 
 fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
