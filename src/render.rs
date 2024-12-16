@@ -1,6 +1,6 @@
 use colored::{Color, Colorize, Styles};
 use itertools::Itertools;
-use rustyms::align::Alignment;
+use rustyms::align::{Alignment, Piece};
 use rustyms::imgt::Allele;
 use rustyms::peptide::{AnnotatedPeptide, Annotation, Region};
 use rustyms::system::Mass;
@@ -108,21 +108,66 @@ pub fn show_chained_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>
         // Show annotation and regions for fasta
         // let mut annotations = Vec::new();
         let mut regions = Vec::new();
-        let mut a_regions = alignments.iter().flat_map(|(a, _)| a.regions).collect_vec(); // TODO: this misses unmatched regions between alignments
+        let mut a_regions = alignments
+            .iter()
+            .map(|(a, al)| (a, (al.start_b() != 0).then_some((None, al.start_a()))))
+            .flat_map(|(a, start)| {
+                start
+                    .into_iter()
+                    .chain(a.regions.iter().map(|(r, l)| (Some(r.clone()), *l)))
+            })
+            .collect_vec(); // TODO: this misses unmatched regions between alignments
         a_regions.reverse();
 
         let mut len_a = 0;
         let mut len_b = 0;
-        for path in alignments.iter().flat_map(|(_, a)| a.path()) {
+        let mut last_region = None;
+        for path in alignments
+            .iter()
+            .map(|(_, al)| {
+                (
+                    al,
+                    (al.start_b() != 0).then_some(Piece {
+                        score: 0,
+                        local_score: 0,
+                        match_type: MatchType::FullIdentity,
+                        step_a: al.start_a() as u16,
+                        step_b: al.start_b() as u16,
+                    }),
+                )
+            })
+            .flat_map(|(al, a)| a.into_iter().chain(al.path().iter().cloned()))
+        {
             len_a += path.step_a as usize;
             len_b += path.step_b as usize;
-            if let Some((r, l)) = a_regions.last() {
-                if *l <= len_a {
-                    regions.push((r.clone(), len_b));
+            if let Some((r, l)) = a_regions.last().cloned() {
+                if l <= len_a {
+                    let region = r
+                        .clone()
+                        .or(last_region)
+                        .unwrap_or(Region::Other("Unknown".to_string()));
+                    if regions.last().is_some_and(|(r, _)| *r == region) {
+                        regions.last_mut().unwrap().1 += len_b;
+                    } else {
+                        regions.push((region, len_b));
+                    }
+                    last_region = r.clone();
                     a_regions.pop();
                     len_a -= l;
                     len_b = 0;
                 }
+            }
+        }
+        // Map the remaining piece to the last element
+        if let Some((r, _)) = a_regions.last().cloned() {
+            let region = r
+                .clone()
+                .or(last_region)
+                .unwrap_or(Region::Other("Unknown".to_string()));
+            if regions.last().is_some_and(|(r, _)| *r == region) {
+                regions.last_mut().unwrap().1 += len_b;
+            } else {
+                regions.push((region, len_b));
             }
         }
 
