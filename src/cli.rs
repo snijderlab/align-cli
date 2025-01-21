@@ -6,7 +6,7 @@ use rustyms::system::Mass;
 use rustyms::{
     align::{self, AlignType},
     placement_rule::*,
-    AminoAcid, LinearPeptide, MassMode, Tolerance,
+    AminoAcid, MassMode, Peptidoform, Tolerance,
 };
 use rustyms::{ReturnModification, SimpleLinear};
 use std::str::FromStr;
@@ -84,9 +84,9 @@ pub struct Cli {
     #[arg(short, long, default_value_t = Modifications::None, value_parser=modifications_parse, allow_hyphen_values=true)]
     pub variable: Modifications,
 
-    /// The base to always include in generating isobaric sets. This is assumed to be a simple sequence (for details see rustyms::LinearPeptide::assume_simple).
+    /// The base to always include in generating isobaric sets. This is assumed to be a simple sequence (for details see rustyms::Peptidoform::assume_simple).
     #[arg(long, value_parser=peptide_parser)]
-    pub include: Option<LinearPeptide<SimpleLinear>>,
+    pub include: Option<Peptidoform<SimpleLinear>>,
 
     /// Overrule the default set of amino acids used in the isobaric sequences generation. The default set has all amino acids with a defined mass (no I/L in favour of J, no B/Z/X, but with U/O included).
     #[arg(long, value_parser=amino_acids_parser)]
@@ -436,8 +436,8 @@ fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
             .map_err(|_| "Invalid options parameter")
     }
 }
-fn peptide_parser(input: &str) -> Result<LinearPeptide<SimpleLinear>, String> {
-    LinearPeptide::pro_forma(input, None)
+fn peptide_parser(input: &str) -> Result<Peptidoform<SimpleLinear>, String> {
+    Peptidoform::pro_forma(input, None)
         .map_err(|e| e.to_string())?
         .into_simple_linear()
         .ok_or("Not a simple peptide".to_string())
@@ -560,7 +560,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
             .map(|m| {
                 if let Some((head, tail)) = m.split_once('@') {
                     let modification =
-                    SimpleModificationInner::try_from(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
+                    SimpleModificationInner::try_from(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.0.defined() {
                         Ok(d) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
@@ -578,7 +578,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
                         };
                     Ok((modification, Some(rule)))
                 } else {
-                    SimpleModificationInner::try_from(m, 0..m.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.defined() {
+                    SimpleModificationInner::try_from(m, 0..m.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.0.defined() {
                         Ok((d, None)) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
@@ -601,7 +601,7 @@ fn modification_parse(input: &str) -> Result<SimpleModification, String> {
             &mut Vec::new(),
             None,
         )
-        .map(|m| match m {
+        .map(|(m, _)| match m {
             ReturnModification::Defined(d) => d,
             _ => {
                 panic!("Can not define ambiguous modifications for the modifications parameter")

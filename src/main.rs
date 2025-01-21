@@ -15,7 +15,7 @@ use rustyms::{
     },
     modification_search_formula, modification_search_glycan, modification_search_mass,
     placement_rule::*,
-    AminoAcid, AtMax, Chemical, LinearPeptide, MassMode, MolecularFormula, Multi, SimpleLinear,
+    AminoAcid, AtMax, Chemical, MassMode, MolecularFormula, Multi, Peptidoform, SimpleLinear,
     Tolerance, UnAmbiguous,
 };
 use std::{
@@ -39,11 +39,11 @@ use styling::*;
 fn main() {
     let args = Cli::parse();
     if let (Some(a), Some(b)) = (&args.a, &args.second.b) {
-        let a = LinearPeptide::pro_forma(a, None)
+        let a = Peptidoform::pro_forma(a, None)
             .unwrap()
             .into_simple_linear()
             .unwrap();
-        let b = LinearPeptide::pro_forma(b, None)
+        let b = Peptidoform::pro_forma(b, None)
             .unwrap()
             .into_simple_linear()
             .unwrap();
@@ -64,7 +64,7 @@ fn main() {
         );
     } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
         let sequences = rustyms::identification::FastaData::parse_file(path).unwrap();
-        let search_sequence = LinearPeptide::pro_forma(b, None)
+        let search_sequence = Peptidoform::pro_forma(b, None)
             .unwrap()
             .into_simple_linear()
             .unwrap();
@@ -133,7 +133,7 @@ fn main() {
             &args,
         );
     } else if let (Some(x), true) = (&args.a, &args.second.imgt) {
-        let seq_b = LinearPeptide::pro_forma(x, None)
+        let seq_b = Peptidoform::pro_forma(x, None)
             .unwrap()
             .into_simple_linear()
             .unwrap();
@@ -216,7 +216,7 @@ fn main() {
         );
     } else if let (Some(x), true) = (&args.a, &args.second.domain) {
         let scores = consecutive_align(
-            &LinearPeptide::pro_forma(x, None)
+            &Peptidoform::pro_forma(x, None)
                 .unwrap()
                 .into_simple_linear()
                 .unwrap(),
@@ -288,7 +288,7 @@ fn main() {
         (&args.a, &args.second.specific_gene, &args.species)
     {
         if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
-            let b = LinearPeptide::pro_forma(x, None)
+            let b = Peptidoform::pro_forma(x, None)
                 .unwrap()
                 .into_simple_linear()
                 .unwrap();
@@ -319,7 +319,7 @@ fn main() {
     } else if let Some(x) = &args.a {
         single_stats(
             &args,
-            LinearPeptide::pro_forma(x, None)
+            Peptidoform::pro_forma(x, None)
                 .unwrap()
                 .into_simple_linear()
                 .unwrap(),
@@ -358,11 +358,11 @@ fn main() {
                 .unwrap();
                 first = false;
             }
-            let a = LinearPeptide::pro_forma(line.index_column("a").unwrap().0, None)
+            let a = Peptidoform::pro_forma(line.index_column("a").unwrap().0, None)
                 .unwrap()
                 .into_simple_linear()
                 .unwrap();
-            let b = LinearPeptide::pro_forma(line.index_column("b").unwrap().0, None)
+            let b = Peptidoform::pro_forma(line.index_column("b").unwrap().0, None)
                 .unwrap()
                 .into_simple_linear()
                 .unwrap();
@@ -419,7 +419,7 @@ fn main() {
     }
 }
 
-fn single_stats(args: &Cli, seq: LinearPeptide<SimpleLinear>) {
+fn single_stats(args: &Cli, seq: Peptidoform<SimpleLinear>) {
     let full_formulas = seq.formulas().unique();
     let bare_formulas = seq.bare_formulas().unique();
     print_multi_formula(&full_formulas, "Full", "", args.full_number);
@@ -980,8 +980,8 @@ fn display_germline(allele: Allele, args: &Cli) {
 }
 
 fn align<'a, A: AtMax<SimpleLinear>, B: AtMax<SimpleLinear>>(
-    seq_a: &'a LinearPeptide<A>,
-    seq_b: &'a LinearPeptide<B>,
+    seq_a: &'a Peptidoform<A>,
+    seq_b: &'a Peptidoform<B>,
     scoring: AlignScoring<'a>,
     ty: AlignType,
     kind: AlignmentKind,
@@ -998,7 +998,7 @@ fn align<'a, A: AtMax<SimpleLinear>, B: AtMax<SimpleLinear>>(
 }
 
 fn consecutive_align(
-    seq: &LinearPeptide<SimpleLinear>,
+    seq: &Peptidoform<SimpleLinear>,
     species: Option<HashSet<imgt::Species>>,
     chains: Option<HashSet<imgt::ChainType>>,
     allele: imgt::AlleleSelection,

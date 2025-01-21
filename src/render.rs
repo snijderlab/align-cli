@@ -2,10 +2,10 @@ use colored::{Color, Colorize, Styles};
 use itertools::Itertools;
 use rustyms::align::{Alignment, Piece};
 use rustyms::imgt::Allele;
-use rustyms::peptide::{AnnotatedPeptide, Annotation, Region};
+use rustyms::peptidoform::{AnnotatedPeptide, Annotation, Region};
 use rustyms::system::Mass;
 use rustyms::{align::MatchType, Tolerance};
-use rustyms::{AminoAcid, AtMax, Linear, LinearPeptide};
+use rustyms::{AminoAcid, AtMax, Linear, Peptidoform};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -784,7 +784,7 @@ fn relative_notation(ppm: f64, precision: usize) -> (String, &'static str) {
     }
 }
 
-fn find_possible_n_glycan_locations<A>(sequence: &LinearPeptide<A>) -> Vec<usize> {
+fn find_possible_n_glycan_locations<A>(sequence: &Peptidoform<A>) -> Vec<usize> {
     let mut result = Vec::new();
     for (index, aa) in sequence.sequence().windows(3).enumerate() {
         if let (AminoAcid::Asparagine, AminoAcid::Serine | AminoAcid::Threonine) =
