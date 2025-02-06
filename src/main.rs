@@ -5,7 +5,7 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::align::par_consecutive_align;
 use rustyms::imgt::Selection;
-use rustyms::system::Mass;
+use rustyms::system::{dalton, Mass};
 use rustyms::{
     align::*,
     find_isobaric_sets, imgt,
@@ -18,6 +18,8 @@ use rustyms::{
     AminoAcid, AtMax, Chemical, MassMode, MolecularFormula, Multi, Peptidoform, SimpleLinear,
     Tolerance, UnAmbiguous,
 };
+use rustyms::{find_formulas, Element};
+use std::num::NonZeroU16;
 use std::{
     collections::HashSet,
     io::{BufWriter, Write},
@@ -414,6 +416,32 @@ fn main() {
             }
             display_germline(allele, &args);
         }
+    } else if let Some(target) = args.formula_target {
+        const DEFAULT_ELEMENTS: &[(Element, Option<NonZeroU16>)] = &[
+            (Element::H, None),
+            (Element::C, None),
+            (Element::O, None),
+            (Element::N, None),
+            (Element::S, None),
+        ];
+        let mut data = vec![["Formula".to_string(), "Mass".to_string()]];
+        for formula in find_formulas(
+            target.0,
+            Tolerance::Absolute(Mass::new::<dalton>(10.0_f64.powf(-(target.1 as f64)) / 2.0)),
+            DEFAULT_ELEMENTS,
+        )
+        .iter()
+        {
+            data.push([
+                formula.hill_notation_fancy(),
+                display_mass(
+                    formula.monoisotopic_mass(),
+                    false,
+                    Some((target.1 + 2).max(3)),
+                ),
+            ]);
+        }
+        table(&data, true, &[Styling::none(), Styling::none()]);
     } else {
         println!("Please provide an argument to work with, use --help to see all options.")
     }

@@ -170,6 +170,11 @@ pub struct Cli {
     /// Multiple positions can be specified by using this argument multiple times.
     #[arg(long, value_parser=positions_parser)]
     pub positions: Option<Vec<(Vec<AminoAcid>, Position)>>,
+
+    /// Search for a fitting molecular formula for this mass.
+    // Contains the mass and number of digits
+    #[arg(long = "formula", value_parser=formula_parser)]
+    pub formula_target: Option<(Mass, usize)>,
 }
 
 impl Cli {
@@ -187,6 +192,23 @@ impl Cli {
             mass_mode: self.mass_mode,
         }
     }
+}
+
+fn formula_parser(value: &str) -> Result<(Mass, usize), String> {
+    let target = Mass::new::<rustyms::system::dalton>(value.parse::<f64>().map_err(|err| {
+        format!("Given target mass for formula search is not a valid number: {err}")
+    })?);
+    Ok((
+        target,
+        if let Some((_, tail)) = value.split_once('.') {
+            tail.to_lowercase()
+                .split_once('e')
+                .map_or(tail, |(t, _)| t)
+                .len()
+        } else {
+            0
+        },
+    ))
 }
 
 fn positions_parser(value: &str) -> Result<(Vec<AminoAcid>, Position), String> {

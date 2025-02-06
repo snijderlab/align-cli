@@ -15,14 +15,14 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "cargo"] }
-colored = "2"
-itertools = "0.13"
+colored = "3"
+itertools = "0.14"
 rayon = "1.10"
 rustyms = "0.9.0"
 
 [patch.crates-io]
 # rustyms = { git = "https://github.com/snijderlab/rustyms", branch = "main" }
-#rustyms = { path = "../rustyms/rustyms" }
+rustyms = { path = "../rustyms/rustyms" }
 
 [profile.release]
 debug = true
