@@ -18,7 +18,7 @@ use rustyms::{
     AminoAcid, AtMax, Chemical, MassMode, MolecularFormula, Multi, Peptidoform, SimpleLinear,
     Tolerance, UnAmbiguous,
 };
-use rustyms::{find_formulas, Element};
+use rustyms::{find_formulas, Element, IsAminoAcid};
 use std::num::NonZeroU16;
 use std::{
     collections::HashSet,
@@ -915,7 +915,10 @@ fn display_placement_rules(rules: &[PlacementRule]) {
                 print!(
                     "{}{}@{}",
                     if first { "" } else { ", " },
-                    aa.iter().map(|a| a.char()).collect::<String>().yellow(),
+                    aa.iter()
+                        .map(|a| a.pro_forma_definition())
+                        .collect::<String>()
+                        .yellow(),
                     pos.to_string().green()
                 )
             }

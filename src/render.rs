@@ -5,7 +5,7 @@ use rustyms::imgt::Allele;
 use rustyms::peptidoform::{AnnotatedPeptide, Annotation, Region};
 use rustyms::system::Mass;
 use rustyms::{align::MatchType, Tolerance};
-use rustyms::{AminoAcid, AtMax, Linear, Peptidoform};
+use rustyms::{AminoAcid, AtMax, IsAminoAcid, Linear, Peptidoform};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -280,7 +280,12 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                 start_context_override.as_ref().and_then(|r| r.bg_color()),
                 (number_tail.pop().unwrap_or(' '), base_style.clone()),
                 (
-                    a_index.map_or(' ', |a| alignment.seq_a().sequence()[a].aminoacid.char()),
+                    a_index.map_or(' ', |a| {
+                        alignment.seq_a().sequence()[a]
+                            .aminoacid
+                            .one_letter_code()
+                            .unwrap_or('X')
+                    }),
                     base_style.clone().maybe_style(a_index.and_then(|a| {
                         alignment.seq_a().sequence()[a..a + 1]
                             .iter()
@@ -289,7 +294,12 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                     })),
                 ),
                 (
-                    b_index.map_or(' ', |b| alignment.seq_b().sequence()[b].aminoacid.char()),
+                    b_index.map_or(' ', |b| {
+                        alignment.seq_b().sequence()[b]
+                            .aminoacid
+                            .one_letter_code()
+                            .unwrap_or('X')
+                    }),
                     base_style.clone().maybe_style(b_index.and_then(|b| {
                         alignment.seq_b().sequence()[b..b + 1]
                             .iter()
@@ -356,7 +366,7 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                 "{:·<width$}",
                 alignment.seq_a()[a..a + step.step_a as usize]
                     .iter()
-                    .map(|a| a.aminoacid.char())
+                    .map(|a| a.aminoacid.pro_forma_definition())
                     .collect::<String>(),
                 width = len
             )
@@ -370,7 +380,7 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                 "{:·<width$}",
                 alignment.seq_b()[b..b + step.step_b as usize]
                     .iter()
-                    .map(|a| a.aminoacid.char())
+                    .map(|a| a.aminoacid.pro_forma_definition())
                     .collect::<String>(),
                 width = len
             )
@@ -468,7 +478,12 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                     Styling::with_style(Styles::Dimmed),
                 ),
                 (
-                    a_index.map_or(' ', |a| alignment.seq_a()[a].aminoacid.char()),
+                    a_index.map_or(' ', |a| {
+                        alignment.seq_a()[a]
+                            .aminoacid
+                            .one_letter_code()
+                            .unwrap_or('X')
+                    }),
                     Styling::with_style(Styles::Dimmed).maybe_style(a_index.and_then(|a| {
                         alignment.seq_a()[a..a + 1]
                             .iter()
@@ -477,7 +492,12 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                     })),
                 ),
                 (
-                    b_index.map_or(' ', |b| alignment.seq_b()[b].aminoacid.char()),
+                    b_index.map_or(' ', |b| {
+                        alignment.seq_b()[b]
+                            .aminoacid
+                            .one_letter_code()
+                            .unwrap_or('X')
+                    }),
                     Styling::with_style(Styles::Dimmed).maybe_style(b_index.and_then(|b| {
                         alignment.seq_b()[b..b + 1]
                             .iter()
