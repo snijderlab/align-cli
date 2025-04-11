@@ -437,7 +437,7 @@ fn main() {
                 display_mass(
                     formula.monoisotopic_mass(),
                     false,
-                    Some((target.1 + 2).max(3)),
+                    (!args.full_number).then_some((target.1 + 3).max(3)),
                 ),
             ]);
         }
