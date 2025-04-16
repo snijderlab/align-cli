@@ -1,6 +1,8 @@
 name: Rust
 
-on: [push]
+on:
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -17,8 +19,7 @@ jobs:
         run: cargo build --release && strip target/release/align && mv target/release/align target/release/align_amd64
 
       - name: Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             target/release/align_amd64
@@ -45,8 +46,7 @@ jobs:
         run: cargo build --release
 
       - name: Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: target/release/align.exe
         env:
@@ -75,8 +75,7 @@ jobs:
         run: cargo build --release && strip target/release/align && mv target/release/align target/release/align_darwin
 
       - name: Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             target/release/align_darwin
