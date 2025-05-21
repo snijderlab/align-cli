@@ -1,11 +1,13 @@
 use colored::{Color, Colorize, Styles};
 use itertools::Itertools;
-use rustyms::align::{Alignment, Piece};
-use rustyms::imgt::Allele;
-use rustyms::peptidoform::{AnnotatedPeptide, Annotation, Region};
-use rustyms::system::Mass;
-use rustyms::{align::MatchType, Tolerance};
-use rustyms::{AminoAcid, AtMax, IsAminoAcid, Linear, Peptidoform};
+use rustyms::{
+    align::{Alignment, MatchType, Piece},
+    imgt::Allele,
+    prelude::{AminoAcid, IsAminoAcid, Peptidoform},
+    quantities::Tolerance,
+    sequence::{AnnotatedPeptide, Annotation, AtMax, Linear, Region},
+    system::Mass,
+};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt::Display;

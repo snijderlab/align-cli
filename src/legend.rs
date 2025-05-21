@@ -5,7 +5,7 @@ pub trait Legend {
     fn bg_color(&self) -> Option<Color>;
 }
 
-impl Legend for rustyms::Annotation {
+impl Legend for rustyms::sequence::Annotation {
     fn fg_color(&self) -> Option<Color> {
         match self {
             Self::Conserved => Some(Color::Blue),
@@ -18,7 +18,7 @@ impl Legend for rustyms::Annotation {
     }
 }
 
-impl Legend for rustyms::Region {
+impl Legend for rustyms::sequence::Region {
     fn fg_color(&self) -> Option<Color> {
         match self {
             Self::ComplementarityDeterminingRegion(_) => Some(Color::Black),

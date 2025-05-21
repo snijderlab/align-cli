@@ -1,14 +1,15 @@
 use clap::{Args, Parser};
-use rustyms::align::AlignScoring;
-use rustyms::imgt::{AlleleSelection, ChainType, Gene, GeneType, Species};
-use rustyms::modification::{SimpleModification, SimpleModificationInner};
-use rustyms::system::Mass;
 use rustyms::{
-    align::{self, AlignType},
-    placement_rule::*,
-    AminoAcid, MassMode, Peptidoform, Tolerance,
+    align::{self, AlignScoring, AlignType},
+    imgt::{AlleleSelection, ChainType, Gene, GeneType, Species},
+    prelude::*,
+    quantities::Tolerance,
+    sequence::{
+        PlacementRule, Position, ReturnModification, SimpleLinear, SimpleModification,
+        SimpleModificationInner,
+    },
+    system::Mass,
 };
-use rustyms::{ReturnModification, SimpleLinear};
 use std::str::FromStr;
 use std::{collections::HashSet, fmt::Display};
 
@@ -133,37 +134,37 @@ pub struct Cli {
     pub mass_mode: MassMode,
 
     /// The score for a mismatch, this is used as the full score of that step.
-    #[arg(long, default_value = "-1", allow_hyphen_values = true)]
+    #[arg(long, default_value_t = AlignScoring::default().mismatch, allow_hyphen_values = true)]
     pub score_mismatch: i8,
 
     /// The score added to the score for a step if the amino acids are identical but the mass of
     /// the sequence elements are not the same. This is the case if either of the peptides has a
     /// modification at this location. The local score for the step is calculated as follows:
     /// `matrix_score + mass_mismatch`, use a negative number to make this a penalty.
-    #[arg(long, default_value = "-1", allow_hyphen_values = true)]
+    #[arg(long, default_value_t = AlignScoring::default().mass_mismatch, allow_hyphen_values = true)]
     pub score_mass_mismatch: i8,
 
     /// The base score for mass based steps, added to both rotated and isobaric steps.
-    #[arg(long, default_value = "1", allow_hyphen_values = true)]
+    #[arg(long, default_value_t = AlignScoring::default().mass_base, allow_hyphen_values = true)]
     pub score_mass_base: i8,
 
     /// The per position score for a rotated step match. The full score is calculated as follows
     /// `mass_base + rotated * len_a`.
-    #[arg(long, default_value = "3", allow_hyphen_values = true)]
+    #[arg(long, default_value_t = AlignScoring::default().rotated, allow_hyphen_values = true)]
     pub score_rotated: i8,
 
     /// The per position score for an isobaric step match. The full score is calculated as follows
     /// `mass_base + isobaric * (len_a + len_b) / 2`.
-    #[arg(long, default_value = "2", allow_hyphen_values = true)]
+    #[arg(long, default_value_t = AlignScoring::default().isobaric, allow_hyphen_values = true)]
     pub score_isobaric: i8,
 
     /// The gap start score for affine gaps, this is the score for starting any gap. The total score
     /// for a full gap will be `gap_start + gep_extend * len`.
-    #[arg(long, default_value = "-4", allow_hyphen_values = true)]
+    #[arg(long, default_value_t = AlignScoring::default().gap_start, allow_hyphen_values = true)]
     pub score_gap_start: i8,
 
     /// The gap extend for affine gaps.
-    #[arg(long, default_value = "-1", allow_hyphen_values = true)]
+    #[arg(long, default_value_t = AlignScoring::default().gap_extend, allow_hyphen_values = true)]
     pub score_gap_extend: i8,
 
     /// For mass based modification searching limit the modifications to modifications that are allowed on any of these positions.
@@ -365,6 +366,10 @@ pub struct AlignmentType {
     #[arg(short, long)]
     pub semi_global: bool,
 
+    /// Use either-global alignment, meaning that where on both side either of the sequences has to be aligned globally.
+    #[arg(short, long)]
+    pub either_global: bool,
+
     /// Use semi-global alignment, meaning that the first sequence has to match fully, while the second sequence can be longer then the alignment.
     /// When the `--file` or `--imgt` mode is used this flag indicates that the database sequences can align semi globally to the provided sequence.
     #[arg(short = 'S', long)]
@@ -391,6 +396,8 @@ impl AlignmentType {
             rustyms::align::AlignType::GLOBAL_B
         } else if self.semi_global_a {
             rustyms::align::AlignType::GLOBAL_A
+        } else if self.either_global {
+            rustyms::align::AlignType::EITHER_GLOBAL
         } else {
             rustyms::align::AlignType::GLOBAL
         }
@@ -582,7 +589,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
             .map(|m| {
                 if let Some((head, tail)) = m.split_once('@') {
                     let modification =
-                    SimpleModificationInner::try_from(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.0.defined() {
+                    SimpleModificationInner::parse_pro_forma(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.0.defined() {
                         Ok(d) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
@@ -600,7 +607,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
                         };
                     Ok((modification, Some(rule)))
                 } else {
-                    SimpleModificationInner::try_from(m, 0..m.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.0.defined() {
+                    SimpleModificationInner::parse_pro_forma(m, 0..m.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.0.defined() {
                         Ok((d, None)) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
@@ -616,7 +623,7 @@ fn modification_parse(input: &str) -> Result<SimpleModification, String> {
     if input.is_empty() {
         Err("Empty".to_string())
     } else {
-        SimpleModificationInner::try_from(
+        SimpleModificationInner::parse_pro_forma(
             input,
             0..input.len(),
             &mut Vec::new(),

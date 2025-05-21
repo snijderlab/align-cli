@@ -1,24 +1,23 @@
 use clap::Parser;
 use colored::{Color, Colorize, Styles};
-use imgt::{Allele, GeneType};
 use itertools::Itertools;
 use rayon::prelude::*;
-use rustyms::align::par_consecutive_align;
-use rustyms::imgt::Selection;
-use rustyms::system::{dalton, Mass};
 use rustyms::{
-    align::*,
-    find_isobaric_sets, imgt,
-    modification::{
-        GnoComposition, LinkerSpecificity, ModificationId, Ontology, SimpleModification,
-        SimpleModificationInner,
+    align::{
+        par_consecutive_align, AlignScoring, AlignType, Alignment, ConsecutiveAlignment, Side,
     },
-    modification_search_formula, modification_search_glycan, modification_search_mass,
-    placement_rule::*,
-    AminoAcid, AtMax, Chemical, MassMode, MolecularFormula, Multi, Peptidoform, SimpleLinear,
-    Tolerance, UnAmbiguous,
+    chemistry::find_formulas,
+    imgt::{get_germline, Allele, AlleleSelection, ChainType, GeneType, Selection, Species},
+    ontology::Ontology,
+    prelude::*,
+    quantities::{Multi, Tolerance},
+    sequence::{
+        modification_search_formula, modification_search_glycan, modification_search_mass, AtMax,
+        GnoComposition, LinkerSpecificity, ModificationId, PlacementRule, Position, SimpleLinear,
+        SimpleModification, SimpleModificationInner, UnAmbiguous,
+    },
+    system::{dalton, Mass},
 };
-use rustyms::{find_formulas, Element, IsAminoAcid};
 use std::num::NonZeroU16;
 use std::{
     collections::HashSet,
@@ -289,7 +288,7 @@ fn main() {
     } else if let (Some(x), Some((gene, allele)), Some(species)) =
         (&args.a, &args.second.specific_gene, &args.species)
     {
-        if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
+        if let Some(allele) = get_germline(*species, gene.clone(), *allele) {
             let b = Peptidoform::pro_forma(x, None)
                 .unwrap()
                 .into_simple_linear()
@@ -335,7 +334,8 @@ fn main() {
             args.positions.as_deref(),
         );
     } else if let Some(file) = &args.second.csv {
-        let csv = rustyms::csv::parse_csv(file, b',', None).expect("Failed to parse CSV file");
+        let csv = rustyms::identification::csv::parse_csv(file, b',', None)
+            .expect("Failed to parse CSV file");
         let output = std::fs::File::create(
             Path::new(file).with_file_name(
                 Path::new(file)
@@ -395,7 +395,7 @@ fn main() {
     } else if let (Some((gene, allele)), Some(species)) =
         (&args.second.specific_gene, &args.species)
     {
-        if let Some(allele) = imgt::get_germline(*species, gene.clone(), *allele) {
+        if let Some(allele) = get_germline(*species, gene.clone(), *allele) {
             display_germline(allele, &args);
         } else {
             println!("Could not find specified germline")
@@ -660,8 +660,8 @@ fn modification_stats(
                     modification.to_string(),
                     format!(
                         "{}{}",
+                        ontology.name(),
                         id.map_or(String::new(), |id| format!("{id}:")),
-                        ontology.name()
                     ),
                 ])
             }
@@ -1030,9 +1030,9 @@ fn align<'a, A: AtMax<SimpleLinear>, B: AtMax<SimpleLinear>>(
 
 fn consecutive_align(
     seq: &Peptidoform<SimpleLinear>,
-    species: Option<HashSet<imgt::Species>>,
-    chains: Option<HashSet<imgt::ChainType>>,
-    allele: imgt::AlleleSelection,
+    species: Option<HashSet<Species>>,
+    chains: Option<HashSet<ChainType>>,
+    allele: AlleleSelection,
     scoring: AlignScoring,
     return_number: usize,
     kind: AlignmentKind,

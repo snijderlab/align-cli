@@ -753,8 +753,6 @@ checksum = "eded382c5f5f786b989652c49544c4877d9f015cc22e145a5ea8ea66c2921cd2"
 [[package]]
 name = "rustyms"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c4c4248bb25b2e7911154def35d8129e248c109ecd1ddf85f2ad3000a8ee823"
 dependencies = [
  "bincode",
  "flate2",

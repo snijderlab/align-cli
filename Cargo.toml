@@ -20,6 +20,9 @@ itertools = "0.14"
 rayon = "1.10"
 rustyms = "0.10.0"
 
+[patch.crates-io]
+rustyms = {path="../rustyms/rustyms"}
+
 [profile.release]
 debug = true
 opt-level = 3
