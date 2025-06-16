@@ -21,7 +21,7 @@ rayon = "1.10"
 rustyms = "0.10.0"
 
 [patch.crates-io]
-rustyms = {path="../rustyms/rustyms"}
+rustyms = {path="../mzcore/rustyms"}
 
 [profile.release]
 debug = true

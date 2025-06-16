@@ -783,9 +783,14 @@ fn display_single_mod(modification: &SimpleModificationInner, precision: Option<
             println!("Placement rules: ");
             for specificity in specificities {
                 match specificity {
-                    LinkerSpecificity::Symmetric(locations, stubs, diagnostic) => {
+                    LinkerSpecificity::Symmetric {
+                        rules,
+                        stubs,
+                        neutral_losses,
+                        diagnostic,
+                    } => {
                         print!("  Locations: ");
-                        display_placement_rules(locations);
+                        display_placement_rules(rules);
                         if !stubs.is_empty() {
                             print!(
                                 ", Cleave points: {}",
@@ -796,6 +801,15 @@ fn display_single_mod(modification: &SimpleModificationInner, precision: Option<
                                         a.hill_notation_fancy().yellow(),
                                         b.hill_notation_fancy().yellow()
                                     ))
+                                    .join(", ")
+                            );
+                        }
+                        if !neutral_losses.is_empty() {
+                            print!(
+                                ", Neutral losses: {}",
+                                neutral_losses
+                                    .iter()
+                                    .map(|d| d.hill_notation_fancy().green())
                                     .join(", ")
                             );
                         }
@@ -809,11 +823,16 @@ fn display_single_mod(modification: &SimpleModificationInner, precision: Option<
                             );
                         }
                     }
-                    LinkerSpecificity::Asymmetric(locations, stubs, diagnostic) => {
+                    LinkerSpecificity::Asymmetric {
+                        rules,
+                        stubs,
+                        neutral_losses,
+                        diagnostic,
+                    } => {
                         print!("  Left: ");
-                        display_placement_rules(&locations.0);
+                        display_placement_rules(&rules.0);
                         print!(", Right: ");
-                        display_placement_rules(&locations.1);
+                        display_placement_rules(&rules.1);
 
                         if !stubs.is_empty() {
                             print!(
@@ -825,6 +844,15 @@ fn display_single_mod(modification: &SimpleModificationInner, precision: Option<
                                         a.hill_notation_fancy().yellow(),
                                         b.hill_notation_fancy().yellow()
                                     ))
+                                    .join(", ")
+                            );
+                        }
+                        if !neutral_losses.is_empty() {
+                            print!(
+                                ", Neutral losses: {}",
+                                neutral_losses
+                                    .iter()
+                                    .map(|d| d.hill_notation_fancy().green())
                                     .join(", ")
                             );
                         }

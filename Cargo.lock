@@ -451,9 +451,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.52.0"
+version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c697aaf28d7028f10a4812acf50a01cf75251ebe6088bb6ba4991bfab0b6780"
+checksum = "a1a43970d350b8586e8a6ce4997273cc08902d42987edad5d05e923414bbd683"
 dependencies = [
  "base64-simd",
  "bitflags",
@@ -900,9 +900,9 @@ checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
 name = "uom"
-version = "0.36.0"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffd36e5350a65d112584053ee91843955826bf9e56ec0d1351214e01f6d7cd9c"
+checksum = "cd5cfe7d84f6774726717f358a37f5bca8fca273bed4de40604ad129d1107b49"
 dependencies = [
  "num-bigint",
  "num-complex",
