@@ -1,6 +1,6 @@
 use clap::{Args, Parser};
 use rustyms::{
-    align::{self, AlignScoring, AlignType},
+    align::{self, AlignScoring, AlignType, PairMode},
     imgt::{AlleleSelection, ChainType, Gene, GeneType, Species},
     prelude::*,
     quantities::Tolerance,
@@ -167,6 +167,10 @@ pub struct Cli {
     #[arg(long, default_value_t = AlignScoring::default().gap_extend, allow_hyphen_values = true)]
     pub score_gap_extend: i8,
 
+    /// The pair mode for the alignment, one of 'same', 'dp', or 'pd'.
+    #[arg(long, value_parser=pair_parser, default_value_t = AlignScoring::default().pair)]
+    pub pair: PairMode,
+
     /// For mass based modification searching limit the modifications to modifications that are allowed on any of these positions.
     /// Multiple positions can be specified by using this argument multiple times.
     #[arg(long, value_parser=positions_parser)]
@@ -190,8 +194,18 @@ impl Cli {
             gap_extend: self.score_gap_extend,
             matrix: self.scoring_matrix.matrix(),
             tolerance: self.tolerance.convert(),
+            pair: self.pair,
             mass_mode: self.mass_mode,
         }
+    }
+}
+
+fn pair_parser(value: &str) -> Result<PairMode, &'static str> {
+    match value.to_ascii_lowercase().as_str() {
+        "same" => Ok(PairMode::Same),
+        "dp" => Ok(PairMode::DatabaseToPeptidoform),
+        "pd" => Ok(PairMode::PeptidoformToDatabase),
+        _ => Err("Invalid pair mode"),
     }
 }
 

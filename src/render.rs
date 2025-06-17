@@ -328,7 +328,7 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
             StepType::Insertion => (Some(Color::Yellow), "+"),
             StepType::Deletion => (Some(Color::Yellow), "+"),
             StepType::Match => (None, " "),
-            StepType::MassMismatch => (Some(Color::Red), "m"),
+            StepType::MassMismatch => (Some(Color::Yellow), "m"),
             StepType::Mismatch => (Some(Color::Red), "⨯"),
             StepType::Special => (Some(Color::Yellow), "-"), // ⇤⇥ ⤚---⤙ ├─┤ ║ ⤚⤙ l╴r╶
         };
