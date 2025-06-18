@@ -704,38 +704,65 @@ impl CombinedLines {
     }
 }
 
-pub fn table<const N: usize>(data: &[[String; N]], header: bool, styling: &[Styling; N]) {
-    let sizes = data.iter().fold([0; N], |mut sizes, row| {
-        for i in 0..N {
-            sizes[i] = sizes[i].max(row[i].chars().count());
-        }
-        sizes
-    });
-    let line = |start, middle, end| {
-        print!("{start}");
-        for size in sizes.iter().take(N - 1).copied() {
-            print!("{}{middle}", "─".repeat(size));
-        }
-        println!("{}{end}", "─".repeat(sizes[N - 1]));
-    };
-    line("╭", "┬", "╮");
-    if header {
-        print!("│");
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..N {
-            print!("{:^w$}│", data[0][i].blue(), w = sizes[i]);
-        }
-        println!();
-        line("├", "┼", "┤");
-    }
-    for row in data.iter().skip(usize::from(header)) {
-        print!("│");
-        for i in 0..N {
-            print!("{:w$}│", row[i].apply(&styling[i]), w = sizes[i]);
+pub fn table<const N: usize>(
+    data: &[[String; N]],
+    header: bool,
+    styling: &[Styling; N],
+    display_csv: bool,
+) {
+    if display_csv {
+        let display_cell = |cell: &str| {
+            let content = cell.replace('\"', "\'");
+            if content.contains(',') {
+                format!("\"{content}\"")
+            } else {
+                content
+            }
+        };
+        for line in data {
+            if !line.is_empty() {
+                print!("{}", display_cell(&line[0]));
+            }
+
+            for cell in line.iter().skip(1) {
+                print!(",{}", display_cell(cell))
+            }
+            println!();
         }
         println!();
+    } else {
+        let sizes = data.iter().fold([0; N], |mut sizes, row| {
+            for i in 0..N {
+                sizes[i] = sizes[i].max(row[i].chars().count());
+            }
+            sizes
+        });
+        let line = |start, middle, end| {
+            print!("{start}");
+            for size in sizes.iter().take(N - 1).copied() {
+                print!("{}{middle}", "─".repeat(size));
+            }
+            println!("{}{end}", "─".repeat(sizes[N - 1]));
+        };
+        line("╭", "┬", "╮");
+        if header {
+            print!("│");
+            #[allow(clippy::needless_range_loop)]
+            for i in 0..N {
+                print!("{:^w$}│", data[0][i].blue(), w = sizes[i]);
+            }
+            println!();
+            line("├", "┼", "┤");
+        }
+        for row in data.iter().skip(usize::from(header)) {
+            print!("│");
+            for i in 0..N {
+                print!("{:w$}│", row[i].apply(&styling[i]), w = sizes[i]);
+            }
+            println!();
+        }
+        line("╰", "┴", "╯");
     }
-    line("╰", "┴", "╯");
 }
 
 pub fn display_mass(value: Mass, colour: bool, precision: Option<usize>) -> String {

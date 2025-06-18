@@ -125,6 +125,10 @@ pub struct Cli {
     #[arg(long)]
     pub display_fasta: bool,
 
+    /// Show tables as csv.
+    #[arg(long)]
+    pub display_csv: bool,
+
     /// Generate annotation for a sequence based on domain gap align
     #[arg(long)]
     pub generate_annotation: bool,

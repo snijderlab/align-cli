@@ -119,6 +119,7 @@ fn main() {
                 Styling::none(),
                 Styling::none(),
             ],
+            args.display_csv,
         );
         println!(
             "{} ({})",
@@ -199,6 +200,7 @@ fn main() {
                 Styling::none(),
                 Styling::none(),
             ],
+            args.display_csv,
         );
         println!(
             "{} ({} {} {})",
@@ -269,6 +271,7 @@ fn main() {
                     Styling::none(),
                     Styling::none(),
                 ],
+                args.display_csv,
             );
         }
 
@@ -332,6 +335,7 @@ fn main() {
             args.full_number,
             args.mass_mode,
             args.positions.as_deref(),
+            args.display_csv,
         );
     } else if let Some(file) = &args.second.csv {
         let csv = rustyms::identification::csv::parse_csv(file, b',', None)
@@ -441,7 +445,12 @@ fn main() {
                 ),
             ]);
         }
-        table(&data, true, &[Styling::none(), Styling::none()]);
+        table(
+            &data,
+            true,
+            &[Styling::none(), Styling::none()],
+            args.display_csv,
+        );
     } else {
         println!("Please provide an argument to work with, use --help to see all options.")
     }
@@ -599,6 +608,7 @@ fn modification_stats(
     full_number: bool,
     mass_mode: MassMode,
     positions: Option<&[(Vec<AminoAcid>, Position)]>,
+    display_csv: bool,
 ) {
     let precision = if full_number {
         None
@@ -645,6 +655,7 @@ fn modification_stats(
                         Styling::with_fg(Some(Color::Yellow)),
                         Styling::with_fg(Some(Color::Green)),
                     ],
+                    display_csv,
                 );
             } else {
                 println!("{}", "No modifications found".red())
@@ -673,6 +684,7 @@ fn modification_stats(
                         Styling::with_fg(Some(Color::Magenta)),
                         Styling::with_style(Styles::Dimmed),
                     ],
+                    display_csv,
                 );
             } else {
                 println!("{}", "No modifications found".red())
@@ -713,6 +725,7 @@ fn modification_stats(
                     &data,
                     true,
                     &[Styling::with_fg(Some(Color::Magenta)), Styling::none()],
+                    display_csv,
                 );
             } else {
                 println!("{}", "No modifications found".red())
