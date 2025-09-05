@@ -21,15 +21,15 @@ impl Legend for rustyms::sequence::Annotation {
 impl Legend for rustyms::sequence::Region {
     fn fg_color(&self) -> Option<Color> {
         match self {
-            Self::ComplementarityDeterminingRegion(_) => Some(Color::Black),
+            Self::ComplementarityDetermining(_) => Some(Color::Black),
             _ => None,
         }
     }
     fn bg_color(&self) -> Option<Color> {
         match self {
-            Self::ComplementarityDeterminingRegion(1) => Some(Color::Red),
-            Self::ComplementarityDeterminingRegion(2) => Some(Color::Green),
-            Self::ComplementarityDeterminingRegion(3) => Some(Color::Blue),
+            Self::ComplementarityDetermining(1) => Some(Color::Red),
+            Self::ComplementarityDetermining(2) => Some(Color::Green),
+            Self::ComplementarityDetermining(3) => Some(Color::Blue),
             _ => None,
         }
     }

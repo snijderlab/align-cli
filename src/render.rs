@@ -3,9 +3,9 @@ use itertools::Itertools;
 use rustyms::{
     align::{Alignment, MatchType, Piece},
     imgt::Allele,
-    prelude::{AminoAcid, IsAminoAcid, Peptidoform},
+    prelude::{AminoAcid, IsAminoAcid},
     quantities::Tolerance,
-    sequence::{AnnotatedPeptide, Annotation, AtMax, Linear, Region},
+    sequence::{AnnotatedPeptide, Annotation, HasPeptidoform, Linear, Region},
     system::Mass,
 };
 use std::cmp::Ordering;
@@ -27,11 +27,11 @@ enum StepType {
 }
 
 pub fn show_annotated_mass_alignment<
-    A: AtMax<Linear>,
-    B: AtMax<Linear>,
+    A: HasPeptidoform<Linear>,
+    B: HasPeptidoform<Linear>,
     Annotated: AnnotatedPeptide,
 >(
-    alignment: &Alignment<'_, A, B>,
+    alignment: &Alignment<A, B>,
     imgt: Option<&Annotated>,
     only_display_a: bool,
     omit_headers: bool,
@@ -65,8 +65,11 @@ pub fn show_annotated_mass_alignment<
     writer.flush();
 }
 
-pub fn show_chained_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>(
-    alignments: &[(Allele, Alignment<'_, A, B>)],
+pub fn show_chained_annotated_mass_alignment<
+    A: HasPeptidoform<Linear>,
+    B: HasPeptidoform<Linear>,
+>(
+    alignments: &[(Allele, Alignment<A, B>)],
     tolerance: Tolerance<Mass>,
     line_width: usize,
     context: bool,
@@ -180,9 +183,13 @@ pub fn show_chained_annotated_mass_alignment<A: AtMax<Linear>, B: AtMax<Linear>>
     }
 }
 
-fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
+fn show_alignment_inner<
+    A: HasPeptidoform<Linear>,
+    B: HasPeptidoform<Linear>,
+    Annotated: AnnotatedPeptide,
+>(
     writer: &mut CombinedLines,
-    alignment: &Alignment<'_, A, B>,
+    alignment: &Alignment<A, B>,
     imgt: Option<&Annotated>,
     context: bool,
     start_context_override: Option<Region>,
@@ -283,13 +290,13 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                 (number_tail.pop().unwrap_or(' '), base_style.clone()),
                 (
                     a_index.map_or(' ', |a| {
-                        alignment.seq_a().sequence()[a]
+                        alignment.seq_a().cast_peptidoform().sequence()[a]
                             .aminoacid
                             .one_letter_code()
                             .unwrap_or('X')
                     }),
                     base_style.clone().maybe_style(a_index.and_then(|a| {
-                        alignment.seq_a().sequence()[a..a + 1]
+                        alignment.seq_a().cast_peptidoform().sequence()[a..a + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
@@ -297,13 +304,13 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                 ),
                 (
                     b_index.map_or(' ', |b| {
-                        alignment.seq_b().sequence()[b]
+                        alignment.seq_b().cast_peptidoform().sequence()[b]
                             .aminoacid
                             .one_letter_code()
                             .unwrap_or('X')
                     }),
                     base_style.clone().maybe_style(b_index.and_then(|b| {
-                        alignment.seq_b().sequence()[b..b + 1]
+                        alignment.seq_b().cast_peptidoform().sequence()[b..b + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
@@ -366,7 +373,7 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
         } else {
             format!(
                 "{:·<width$}",
-                alignment.seq_a()[a..a + step.step_a as usize]
+                alignment.seq_a().cast_peptidoform()[a..a + step.step_a as usize]
                     .iter()
                     .map(|a| a.aminoacid.pro_forma_definition())
                     .collect::<String>(),
@@ -380,7 +387,7 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
         } else {
             format!(
                 "{:·<width$}",
-                alignment.seq_b()[b..b + step.step_b as usize]
+                alignment.seq_b().cast_peptidoform()[b..b + step.step_b as usize]
                     .iter()
                     .map(|a| a.aminoacid.pro_forma_definition())
                     .collect::<String>(),
@@ -425,7 +432,7 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                                 .and_then(|a| a.fg_color()),
                         )
                         .maybe_style(
-                            (alignment.seq_a()[a..a + step.step_a as usize]
+                            (alignment.seq_a().cast_peptidoform()[a..a + step.step_a as usize]
                                 .iter()
                                 .any(|a| !a.modifications.is_empty()))
                             .then_some(Styles::Underline),
@@ -439,7 +446,7 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                             .then_some(Annotation::NGlycan)
                             .and_then(|a| a.fg_color()))
                         .maybe_style(
-                            (alignment.seq_b()[b..b + step.step_b as usize]
+                            (alignment.seq_b().cast_peptidoform()[b..b + step.step_b as usize]
                                 .iter()
                                 .any(|a| !a.modifications.is_empty()))
                             .then_some(Styles::Underline),
@@ -453,11 +460,14 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
     }
     // End context
     if context {
-        let len = (alignment.seq_a().len() - a).max(alignment.seq_b().len() - b);
+        let len = (alignment.seq_a().cast_peptidoform().len() - a)
+            .max(alignment.seq_b().cast_peptidoform().len() - b);
 
         for index in 0..len {
-            let a_index = (a + index < alignment.seq_a().len()).then_some(a + index);
-            let b_index = (b + index < alignment.seq_b().len()).then_some(b + index);
+            let a_index =
+                (a + index < alignment.seq_a().cast_peptidoform().len()).then_some(a + index);
+            let b_index =
+                (b + index < alignment.seq_b().cast_peptidoform().len()).then_some(b + index);
             (number_tail, is_number, number_shift_back) = header(
                 a_index.unwrap_or_default(),
                 len - index,
@@ -481,13 +491,13 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                 ),
                 (
                     a_index.map_or(' ', |a| {
-                        alignment.seq_a()[a]
+                        alignment.seq_a().cast_peptidoform()[a]
                             .aminoacid
                             .one_letter_code()
                             .unwrap_or('X')
                     }),
                     Styling::with_style(Styles::Dimmed).maybe_style(a_index.and_then(|a| {
-                        alignment.seq_a()[a..a + 1]
+                        alignment.seq_a().cast_peptidoform()[a..a + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
@@ -495,13 +505,13 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
                 ),
                 (
                     b_index.map_or(' ', |b| {
-                        alignment.seq_b()[b]
+                        alignment.seq_b().cast_peptidoform()[b]
                             .aminoacid
                             .one_letter_code()
                             .unwrap_or('X')
                     }),
                     Styling::with_style(Styles::Dimmed).maybe_style(b_index.and_then(|b| {
-                        alignment.seq_b()[b..b + 1]
+                        alignment.seq_b().cast_peptidoform()[b..b + 1]
                             .iter()
                             .any(|a| !a.modifications.is_empty())
                             .then_some(Styles::Underline)
@@ -514,8 +524,8 @@ fn show_alignment_inner<A, B, Annotated: AnnotatedPeptide>(
     (number_tail, last_region.cloned())
 }
 
-pub fn show_alignment_header<A: AtMax<Linear>, B: AtMax<Linear>>(
-    alignment: &Alignment<'_, A, B>,
+pub fn show_alignment_header<A: HasPeptidoform<Linear>, B: HasPeptidoform<Linear>>(
+    alignment: &Alignment<A, B>,
     tolerance: Tolerance<Mass>,
     names: (impl Display, impl Display),
     additional_b_start: Option<usize>,
@@ -833,9 +843,14 @@ fn relative_notation(ppm: f64, precision: usize) -> (String, &'static str) {
     }
 }
 
-fn find_possible_n_glycan_locations<A>(sequence: &Peptidoform<A>) -> Vec<usize> {
+fn find_possible_n_glycan_locations(sequence: &impl HasPeptidoform<Linear>) -> Vec<usize> {
     let mut result = Vec::new();
-    for (index, aa) in sequence.sequence().windows(3).enumerate() {
+    for (index, aa) in sequence
+        .cast_peptidoform()
+        .sequence()
+        .windows(3)
+        .enumerate()
+    {
         if let (AminoAcid::Asparagine, AminoAcid::Serine | AminoAcid::Threonine) =
             (aa[0].aminoacid.aminoacid(), aa[2].aminoacid.aminoacid())
         {

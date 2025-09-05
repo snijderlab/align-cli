@@ -13,8 +13,8 @@ use rustyms::{
     quantities::{Multi, Tolerance},
     sequence::{
         modification_search_formula, modification_search_glycan, modification_search_mass, AtMax,
-        GnoComposition, LinkerSpecificity, ModificationId, PlacementRule, Position, SimpleLinear,
-        SimpleModification, SimpleModificationInner, UnAmbiguous,
+        GnoComposition, HasPeptidoform, LinkerSpecificity, ModificationId, PlacementRule, Position,
+        SimpleLinear, SimpleModification, SimpleModificationInner, UnAmbiguous,
     },
     system::{dalton, Mass},
 };
@@ -74,13 +74,13 @@ fn main() {
             .map(|seq| {
                 let sequence = seq.peptide().clone();
                 let alignment = align(
-                    &sequence,
-                    &search_sequence,
+                    sequence.clone(),
+                    search_sequence.clone(),
                     args.scoring(),
                     args.alignment_type.ty(),
                     args.alignment_kind,
                 );
-                (seq, alignment.to_owned())
+                (seq, alignment)
             })
             .filter(|s| !s.1.normalised_score().is_nan())
             .collect();
@@ -1020,7 +1020,7 @@ fn display_germline(allele: Allele, args: &Cli) {
         matrix: rustyms::align::matrix::BLOSUM90,
         ..Default::default()
     };
-    let alignment = rustyms::align::align::<1, UnAmbiguous, UnAmbiguous>(
+    let alignment = rustyms::align::align::<1, &Peptidoform<UnAmbiguous>, &Peptidoform<UnAmbiguous>>(
         allele.sequence,
         allele.sequence,
         scoring,
@@ -1051,13 +1051,13 @@ fn display_germline(allele: Allele, args: &Cli) {
     );
 }
 
-fn align<'a, A: AtMax<SimpleLinear>, B: AtMax<SimpleLinear>>(
-    seq_a: &'a Peptidoform<A>,
-    seq_b: &'a Peptidoform<B>,
+fn align<'a, A: HasPeptidoform<SimpleLinear>, B: HasPeptidoform<SimpleLinear>>(
+    seq_a: A,
+    seq_b: B,
     scoring: AlignScoring<'a>,
     ty: AlignType,
     kind: AlignmentKind,
-) -> Alignment<'a, A, B> {
+) -> Alignment<A, B> {
     if kind.normal {
         rustyms::align::align::<1, A, B>(seq_a, seq_b, scoring, ty)
     } else if kind.mass_based_huge {
@@ -1079,7 +1079,7 @@ fn consecutive_align(
     kind: AlignmentKind,
 ) -> ConsecutiveAlignment<'static, SimpleLinear> {
     if kind.normal {
-        par_consecutive_align::<1, SimpleLinear>(
+        par_consecutive_align::<1, &Peptidoform<SimpleLinear>>(
             seq,
             &[
                 (
@@ -1111,7 +1111,7 @@ fn consecutive_align(
             return_number,
         )
     } else if kind.mass_based_huge {
-        par_consecutive_align::<{ u16::MAX }, SimpleLinear>(
+        par_consecutive_align::<{ u16::MAX }, &Peptidoform<SimpleLinear>>(
             seq,
             &[
                 (
@@ -1143,7 +1143,7 @@ fn consecutive_align(
             return_number,
         )
     } else if kind.mass_based_long {
-        par_consecutive_align::<8, SimpleLinear>(
+        par_consecutive_align::<8, &Peptidoform<SimpleLinear>>(
             seq,
             &[
                 (
@@ -1175,7 +1175,7 @@ fn consecutive_align(
             return_number,
         )
     } else {
-        par_consecutive_align::<4, SimpleLinear>(
+        par_consecutive_align::<4, &Peptidoform<SimpleLinear>>(
             seq,
             &[
                 (
