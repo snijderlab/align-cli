@@ -1060,6 +1060,8 @@ fn align<'a, A: HasPeptidoform<SimpleLinear>, B: HasPeptidoform<SimpleLinear>>(
 ) -> Alignment<A, B> {
     if kind.normal {
         rustyms::align::align::<1, A, B>(seq_a, seq_b, scoring, ty)
+    } else if kind.mass_based_small {
+        rustyms::align::align::<2, A, B>(seq_a, seq_b, scoring, ty)
     } else if kind.mass_based_huge {
         rustyms::align::align::<{ u16::MAX }, A, B>(seq_a, seq_b, scoring, ty)
     } else if kind.mass_based_long {
@@ -1080,6 +1082,38 @@ fn consecutive_align(
 ) -> ConsecutiveAlignment<'static, SimpleLinear> {
     if kind.normal {
         par_consecutive_align::<1, &Peptidoform<SimpleLinear>>(
+            seq,
+            &[
+                (
+                    GeneType::V,
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::J,
+                    AlignType {
+                        left: Side::Specified { a: true, b: false },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+                (
+                    GeneType::C(None),
+                    AlignType {
+                        left: Side::Specified { a: true, b: true },
+                        right: Side::EitherGlobal,
+                    },
+                ),
+            ],
+            species.clone(),
+            chains.clone(),
+            allele,
+            scoring,
+            return_number,
+        )
+    } else if kind.mass_based_small {
+        par_consecutive_align::<2, &Peptidoform<SimpleLinear>>(
             seq,
             &[
                 (

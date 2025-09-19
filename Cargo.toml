@@ -18,7 +18,7 @@ clap = { version = "4.5", features = ["derive", "cargo"] }
 colored = "3"
 itertools = "0.14"
 rayon = "1.10"
-rustyms = {version = "0.10.0", default_features = false, features = ["imgt", "align", "identification", "rayon", "isotopes"]}
+rustyms = {version = "0.10.0", default-features = false, features = ["imgt", "align", "identification", "rayon", "isotopes"]}
 
 [patch.crates-io]
 rustyms = {path="../mzcore/rustyms"}

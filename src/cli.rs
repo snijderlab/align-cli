@@ -305,6 +305,10 @@ pub struct AlignmentKind {
     #[arg(long)]
     pub normal: bool,
 
+    /// Do mass based alignment but allow for a maximal isobaric set length of 2 instead of the default 4.
+    #[arg(long)]
+    pub mass_based_small: bool,
+
     /// Do mass based alignment but allow for a maximal isobaric set length of 8 instead of the default 4.
     #[arg(long)]
     pub mass_based_long: bool,
