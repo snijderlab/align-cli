@@ -1,7 +1,7 @@
 use colored::{Color, Colorize, Styles};
 use itertools::Itertools;
 use rustyms::{
-    align::{Alignment, MatchType, Piece},
+    align::{Alignment, MatchType},
     imgt::Allele,
     prelude::{AminoAcid, IsAminoAcid},
     quantities::Tolerance,
@@ -13,8 +13,8 @@ use std::collections::HashSet;
 use std::fmt::Display;
 use std::fmt::Write;
 
-use crate::{legend::*, Cli};
-use crate::{styling::*, NUMBER_PRECISION};
+use crate::{Cli, generate_annotations::generate_annotations, legend::*};
+use crate::{NUMBER_PRECISION, styling::*};
 
 #[derive(PartialEq, Eq)]
 enum StepType {
@@ -110,75 +110,14 @@ pub fn show_chained_annotated_mass_alignment<
     writer.flush();
 
     if generate_annotation {
-        // Show annotation and regions for fasta
-        // let mut annotations = Vec::new();
-        let mut regions = Vec::new();
-        let mut a_regions = alignments
-            .iter()
-            .map(|(a, al)| (a, (al.start_b() != 0).then_some((None, al.start_a()))))
-            .flat_map(|(a, start)| {
-                start
-                    .into_iter()
-                    .chain(a.regions.iter().map(|(r, l)| (Some(r.clone()), *l)))
-            })
-            .collect_vec(); // TODO: this misses unmatched regions between alignments
-        a_regions.reverse();
-
-        let mut len_a = 0;
-        let mut len_b = 0;
-        let mut last_region = None;
-        for path in alignments
-            .iter()
-            .map(|(_, al)| {
-                (
-                    al,
-                    (al.start_b() != 0).then_some(Piece {
-                        score: 0,
-                        local_score: 0,
-                        match_type: MatchType::FullIdentity,
-                        step_a: al.start_a() as u16,
-                        step_b: al.start_b() as u16,
-                    }),
-                )
-            })
-            .flat_map(|(al, a)| a.into_iter().chain(al.path().iter().cloned()))
-        {
-            len_a += path.step_a as usize;
-            len_b += path.step_b as usize;
-            if let Some((r, l)) = a_regions.last().cloned() {
-                if l <= len_a {
-                    let region = r
-                        .clone()
-                        .or(last_region)
-                        .unwrap_or(Region::Other("Unknown".to_string()));
-                    if regions.last().is_some_and(|(r, _)| *r == region) {
-                        regions.last_mut().unwrap().1 += len_b;
-                    } else {
-                        regions.push((region, len_b));
-                    }
-                    last_region = r.clone();
-                    a_regions.pop();
-                    len_a -= l;
-                    len_b = 0;
-                }
-            }
-        }
-        // Map the remaining piece to the last element
-        if let Some((r, _)) = a_regions.last().cloned() {
-            let region = r
-                .clone()
-                .or(last_region)
-                .unwrap_or(Region::Other("Unknown".to_string()));
-            if regions.last().is_some_and(|(r, _)| *r == region) {
-                regions.last_mut().unwrap().1 += len_b;
-            } else {
-                regions.push((region, len_b));
-            }
-        }
-
+        let (regions, annotations) = generate_annotations(alignments);
         println!(
-            "REGIONS={}",
-            regions.iter().map(|(r, l)| format!("{r}:{l}")).join(";")
+            "REGIONS={} ANNOTATIONS={}",
+            regions.iter().map(|(r, l)| format!("{r}:{l}")).join(";"),
+            annotations
+                .iter()
+                .map(|(a, l)| format!("{a}:{l}"))
+                .join(";"),
         );
     }
 }
@@ -216,31 +155,30 @@ fn show_alignment_inner<
                       room_on_end: bool,
                       skip_first: bool| {
         let region = imgt.and_then(|imgt| imgt.get_region(a + step));
-        if let Some(region) = region {
-            if region.1
-                && number_tail.is_empty()
-                && last_region != Some(region.0)
-                && !(skip_first && last_region == start_context_override.as_ref())
-            {
-                number_tail = format!("{} ", region.0).chars().rev().collect();
+        if let Some(region) = region
+            && region.1
+            && number_tail.is_empty()
+            && last_region != Some(region.0)
+            && !(skip_first && last_region == start_context_override.as_ref())
+        {
+            number_tail = format!("{} ", region.0).chars().rev().collect();
 
-                // Compress the region from CDR3 to 3 or C3 depending on how much room is left
-                if !room_on_end && len == full_width {
-                    if len <= 1 {
-                        number_tail = format!(" {}", number_tail.chars().nth(1).unwrap());
-                    } else if len <= 4 {
-                        number_tail = format!(
-                            " {}{}",
-                            number_tail.chars().nth(1).unwrap(),
-                            number_tail.chars().last().unwrap(),
-                        );
-                    }
+            // Compress the region from CDR3 to 3 or C3 depending on how much room is left
+            if !room_on_end && len == full_width {
+                if len <= 1 {
+                    number_tail = format!(" {}", number_tail.chars().nth(1).unwrap());
+                } else if len <= 4 {
+                    number_tail = format!(
+                        " {}{}",
+                        number_tail.chars().nth(1).unwrap(),
+                        number_tail.chars().last().unwrap(),
+                    );
                 }
-                last_region = Some(region.0);
-                is_number = false;
             }
+            last_region = Some(region.0);
+            is_number = false;
         }
-        if (a + number_shift_back) % NUMBER_GAP == 0 && number_tail.is_empty() {
+        if (a + number_shift_back).is_multiple_of(NUMBER_GAP) && number_tail.is_empty() {
             number_tail = (a + number_shift_back).to_string();
             number_tail = format!(
                 "{}{number_tail}",
@@ -550,26 +488,32 @@ pub fn show_alignment_header<A: HasPeptidoform<Linear>, B: HasPeptidoform<Linear
         format!("({}/{})", stats.gaps, stats.length).dimmed(),
         display_with_precision(score.normalised.0, precision).green(),
         format!("({}/{})", score.absolute, score.max).dimmed(),
-        if alignment
-        .mass_difference().value==0.0 {
+        if alignment.mass_difference().value == 0.0 {
             "Equal mass".yellow().to_string()
         } else {
             let (num, unit) = relative_notation(alignment.ppm().value * 1e6, 3); // ratio to ppm
-            format!("Mass difference: {} {} {}",
+            format!(
+                "Mass difference: {} {} {}",
                 display_mass(alignment.mass_difference(), true, precision),
                 num.yellow(),
-                unit,)
+                unit,
+            )
         },
         names.0,
         alignment.start_a().to_string().magenta(),
         names.1,
-        (additional_b_start.unwrap_or_default() + alignment.start_b()).to_string().magenta(),
+        (additional_b_start.unwrap_or_default() + alignment.start_b())
+            .to_string()
+            .magenta(),
         alignment.short().dimmed(),
         {
-            format!("Tolerance: {tolerance}, Alignment: {} ({}), Maximal isobaric step: {}",
-            alignment.align_type().description(),
-            alignment.align_type().symbol(),
-            alignment.max_step()).dimmed()
+            format!(
+                "Tolerance: {tolerance}, Alignment: {} ({}), Maximal isobaric step: {}",
+                alignment.align_type().description(),
+                alignment.align_type().symbol(),
+                alignment.max_step()
+            )
+            .dimmed()
         },
     );
 }
@@ -666,7 +610,7 @@ impl CombinedLines {
 
         // Flush if the maximal number of chars is reached
         self.chars += 1;
-        if self.chars % self.line_width == 0 {
+        if self.chars.is_multiple_of(self.line_width) {
             self.flush()
         }
     }
@@ -853,10 +797,9 @@ fn find_possible_n_glycan_locations(sequence: &impl HasPeptidoform<Linear>) -> V
     {
         if let (AminoAcid::Asparagine, AminoAcid::Serine | AminoAcid::Threonine) =
             (aa[0].aminoacid.aminoacid(), aa[2].aminoacid.aminoacid())
+            && aa[1].aminoacid.aminoacid() != AminoAcid::Proline
         {
-            if aa[1].aminoacid.aminoacid() != AminoAcid::Proline {
-                result.push(index);
-            }
+            result.push(index);
         }
     }
     result

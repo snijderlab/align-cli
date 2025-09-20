@@ -4,19 +4,20 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use rustyms::{
     align::{
-        par_consecutive_align, AlignScoring, AlignType, Alignment, ConsecutiveAlignment, Side,
+        AlignScoring, AlignType, Alignment, ConsecutiveAlignment, Side, par_consecutive_align,
     },
     chemistry::find_formulas,
-    imgt::{get_germline, Allele, AlleleSelection, ChainType, GeneType, Selection, Species},
+    imgt::{Allele, AlleleSelection, ChainType, GeneType, Selection, Species, get_germline},
     ontology::Ontology,
     prelude::*,
     quantities::{Multi, Tolerance},
     sequence::{
-        modification_search_formula, modification_search_glycan, modification_search_mass, AtMax,
-        GnoComposition, HasPeptidoform, LinkerSpecificity, ModificationId, PlacementRule, Position,
-        SimpleLinear, SimpleModification, SimpleModificationInner, UnAmbiguous,
+        AnnotatedPeptide, GnoComposition, HasPeptidoform, LinkerSpecificity, ModificationId,
+        PlacementRule, Position, SimpleLinear, SimpleModification, SimpleModificationInner,
+        UnAmbiguous, modification_search_formula, modification_search_glycan,
+        modification_search_mass,
     },
-    system::{dalton, Mass},
+    system::{Mass, dalton},
 };
 use std::num::NonZeroU16;
 use std::{
@@ -29,6 +30,7 @@ use std::{
 const NUMBER_PRECISION: usize = 3;
 
 mod cli;
+mod generate_annotations;
 mod legend;
 mod render;
 mod styling;
@@ -420,6 +422,17 @@ fn main() {
             }
             display_germline(allele, &args);
         }
+    } else if let Some(path) = &args.second.file {
+        let sequences = rustyms::identification::FastaData::parse_file(path).unwrap();
+        let mut first = true;
+        for sequence in sequences {
+            if !first {
+                println!();
+            } else {
+                first = false;
+            }
+            display_sequence(sequence.identifier().to_string(), sequence, &args);
+        }
     } else if let Some(target) = args.formula_target {
         const DEFAULT_ELEMENTS: &[(Element, Option<NonZeroU16>)] = &[
             (Element::H, None),
@@ -690,9 +703,9 @@ fn modification_stats(
                 println!("{}", "No modifications found".red())
             }
         }
-        SimpleModificationInner::Glycan(ref g)
+        SimpleModificationInner::Glycan(g)
         | SimpleModificationInner::Gno {
-            composition: GnoComposition::Composition(ref g),
+            composition: GnoComposition::Composition(g),
             ..
         } => {
             display_single_mod(modification, precision);
@@ -1028,10 +1041,20 @@ fn display_germline(allele: Allele, args: &Cli) {
     );
     if args.display_fasta {
         println!(
-            ">{} {} {}",
+            ">{} {} OS={} REGIONS={} ANNOTATIONS={}",
             allele.name().purple(),
-            allele.species.scientific_name(),
             allele.species.common_name().purple(),
+            allele.species.scientific_name(),
+            allele
+                .regions()
+                .iter()
+                .map(|(r, l)| format!("{r}:{l}"))
+                .join(";"),
+            allele
+                .annotations()
+                .iter()
+                .map(|(a, l)| format!("{a}:{l}"))
+                .join(";"),
         );
     } else {
         println!(
@@ -1044,6 +1067,48 @@ fn display_germline(allele: Allele, args: &Cli) {
     show_annotated_mass_alignment(
         &alignment,
         Some(&allele),
+        true,
+        args.display_fasta,
+        ("", ""),
+        args,
+    );
+}
+
+fn display_sequence<A: AnnotatedPeptide + HasPeptidoform<SimpleLinear>>(
+    name: String,
+    a: A,
+    args: &Cli,
+) {
+    let scoring = AlignScoring::<'static> {
+        matrix: rustyms::align::matrix::BLOSUM90,
+        ..Default::default()
+    };
+    let alignment =
+        rustyms::align::align::<1, &Peptidoform<SimpleLinear>, &Peptidoform<SimpleLinear>>(
+            a.cast_peptidoform(),
+            a.cast_peptidoform(),
+            scoring,
+            rustyms::align::AlignType::GLOBAL,
+        );
+    if args.display_fasta {
+        println!(
+            ">{} REGIONS={} ANNOTATIONS={}",
+            name,
+            a.regions()
+                .iter()
+                .map(|(r, l)| format!("{r}:{l}"))
+                .join(";"),
+            a.annotations()
+                .iter()
+                .map(|(a, l)| format!("{a}:{l}"))
+                .join(";")
+        );
+    } else {
+        println!("{}", name.purple(),);
+    }
+    show_annotated_mass_alignment(
+        &alignment,
+        Some(&a),
         true,
         args.display_fasta,
         ("", ""),

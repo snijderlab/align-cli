@@ -596,10 +596,10 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
                 _ => (),
             }
         }
-        if let Some(ind) = index {
-            if ind != input.len() {
-                res.push(&input[ind..]);
-            }
+        if let Some(ind) = index
+            && ind != input.len()
+        {
+            res.push(&input[ind..]);
         }
         res
     }
