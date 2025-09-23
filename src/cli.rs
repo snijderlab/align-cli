@@ -433,7 +433,7 @@ pub struct SecondSelection {
     #[arg()]
     pub b: Option<String>,
 
-    /// A fasta database file to open to align the sequence to, only provide a single sequence for this mode
+    /// A fasta database file to open to align the sequence to
     #[arg(short, long)]
     pub file: Option<String>,
 
@@ -450,7 +450,7 @@ pub struct SecondSelection {
     #[arg(long, value_parser=parse_specific_gene)]
     pub specific_gene: Option<(Gene, Option<usize>)>,
 
-    /// Do a consecutive alignment against V-J-D (in that order) of the IMGT database. Use species/chains/genes/allele to further specify the IMGT selection.
+    /// Do a consecutive alignment against V-J-C (in that order) of the IMGT database. Use species/chains/genes/allele to further specify the IMGT selection.
     #[arg(long)]
     pub domain: bool,
 }
