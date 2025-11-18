@@ -1,14 +1,14 @@
 use clap::Parser;
 use colored::{Color, Colorize, Styles};
+use imgt::{Allele, AlleleSelection, ChainType, GeneType, IMGT, Selection, Species};
 use itertools::Itertools;
-use rayon::prelude::*;
-use rustyms::{
-    align::{
-        AlignScoring, AlignType, Alignment, ConsecutiveAlignment, Side, par_consecutive_align,
-    },
+use mzalign::{
+    AlignIndex, AlignScoring, AlignType, Alignment, ConsecutiveAlignment, Side,
+    par_consecutive_align,
+};
+use mzcore::{
     chemistry::find_formulas,
-    imgt::{Allele, AlleleSelection, ChainType, GeneType, Selection, Species, get_germline},
-    ontology::Ontology,
+    ontology::Ontologies,
     prelude::*,
     quantities::{Multi, Tolerance},
     sequence::{
@@ -19,10 +19,12 @@ use rustyms::{
     },
     system::{Mass, dalton},
 };
-use std::num::NonZeroU16;
+use mzcv::{CVIndex, SynonymScope};
+use rayon::prelude::*;
 use std::{
     collections::HashSet,
     io::{BufWriter, Write},
+    num::NonZeroU16,
     path::Path,
 };
 
@@ -41,34 +43,58 @@ use styling::*;
 
 fn main() {
     let args = Cli::parse();
-    if let (Some(a), Some(b)) = (&args.a, &args.second.b) {
-        let a = Peptidoform::pro_forma(a, None)
+    let (ontologies, _) = mzcore::ontology::Ontologies::init();
+    let (imgt, _) = mzcv::CVIndex::<imgt::IMGT>::init();
+    if let (Some(a), b) = (&args.a, &args.second.b)
+        && !b.is_empty()
+    {
+        let a = Peptidoform::pro_forma(a, &ontologies)
             .unwrap()
+            .0
             .into_simple_linear()
             .unwrap();
-        let b = Peptidoform::pro_forma(b, None)
-            .unwrap()
-            .into_simple_linear()
-            .unwrap();
-        let alignment = align(
-            &a,
-            &b,
-            args.scoring(),
-            args.alignment_type.ty(),
-            args.alignment_kind,
-        );
-        show_annotated_mass_alignment::<_, _, Allele>(
-            &alignment,
-            None,
-            false,
-            false,
-            ("A", "B"),
-            &args,
-        );
+        let b = b
+            .iter()
+            .map(|b| {
+                Peptidoform::pro_forma(b, &ontologies)
+                    .unwrap()
+                    .0
+                    .into_simple_linear()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        if b.len() == 1 {
+            let b = &b[0];
+            let alignment = align(
+                &a,
+                b,
+                args.scoring(),
+                args.alignment_type.ty(),
+                args.alignment_kind,
+            );
+            show_annotated_mass_alignment::<_, _, Allele>(
+                &alignment,
+                None,
+                false,
+                false,
+                ("A", "B"),
+                &args,
+            );
+        } else {
+            let index = AlignIndex::<4, &Peptidoform<SimpleLinear>>::new(
+                std::iter::once(&a).chain(b.iter()),
+                MassMode::Monoisotopic,
+            );
+            let mmsas = index.multi_align(Some(0.6), args.scoring(), args.alignment_type.ty());
+            for mmsa in mmsas {
+                println!("{mmsa}");
+            }
+        }
     } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
-        let sequences = rustyms::identification::FastaData::parse_file(path).unwrap();
-        let search_sequence = Peptidoform::pro_forma(b, None)
+        let sequences = mzident::FastaData::parse_file(path).unwrap();
+        let search_sequence = Peptidoform::pro_forma(b, &ontologies)
             .unwrap()
+            .0
             .into_simple_linear()
             .unwrap();
         let mut alignments: Vec<_> = sequences
@@ -137,8 +163,9 @@ fn main() {
             &args,
         );
     } else if let (Some(x), true) = (&args.a, &args.second.imgt) {
-        let seq_b = Peptidoform::pro_forma(x, None)
+        let seq_b = Peptidoform::pro_forma(x, &ontologies)
             .unwrap()
+            .0
             .into_simple_linear()
             .unwrap();
         let mut alignments: Vec<_> = Selection {
@@ -147,7 +174,7 @@ fn main() {
             genes: args.genes.clone(),
             allele: args.allele,
         }
-        .par_germlines()
+        .par_germlines(&imgt)
         .map(|seq| {
             let alignment = align(
                 seq.sequence,
@@ -221,8 +248,9 @@ fn main() {
         );
     } else if let (Some(x), true) = (&args.a, &args.second.domain) {
         let scores = consecutive_align(
-            &Peptidoform::pro_forma(x, None)
+            &Peptidoform::pro_forma(x, &ontologies)
                 .unwrap()
+                .0
                 .into_simple_linear()
                 .unwrap(),
             args.species.map(|s| HashSet::from([s])),
@@ -231,6 +259,7 @@ fn main() {
             args.scoring(),
             args.number_of_hits,
             args.alignment_kind,
+            &imgt,
         );
 
         for gene in &scores.alignments {
@@ -293,40 +322,46 @@ fn main() {
     } else if let (Some(x), Some((gene, allele)), Some(species)) =
         (&args.a, &args.second.specific_gene, &args.species)
     {
-        if let Some(allele) = get_germline(*species, gene.clone(), *allele) {
-            let b = Peptidoform::pro_forma(x, None)
-                .unwrap()
-                .into_simple_linear()
-                .unwrap();
-            let alignment = align(
-                allele.sequence,
-                &b,
-                args.scoring(),
-                args.alignment_type.ty(),
-                args.alignment_kind,
-            );
-            println!(
-                "Selected: {} {} {}",
-                allele.species.scientific_name().to_string().purple(),
-                allele.species.common_name(),
-                format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
-            );
-            show_annotated_mass_alignment(
-                &alignment,
-                Some(&allele),
-                false,
-                false,
-                (allele.name(), "Query"),
-                &args,
-            );
+        if let Some(germline) = imgt.get_by_index(&(*species, gene.clone())) {
+            if let Some(allele) = germline.select_allele(*allele) {
+                let b = Peptidoform::pro_forma(x, &ontologies)
+                    .unwrap()
+                    .0
+                    .into_simple_linear()
+                    .unwrap();
+                let alignment = align(
+                    allele.sequence,
+                    &b,
+                    args.scoring(),
+                    args.alignment_type.ty(),
+                    args.alignment_kind,
+                );
+                println!(
+                    "Selected: {} {} {}",
+                    allele.species.scientific_name().to_string().purple(),
+                    allele.species.common_name(),
+                    format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
+                );
+                show_annotated_mass_alignment(
+                    &alignment,
+                    Some(&allele),
+                    false,
+                    false,
+                    (allele.name(), "Query"),
+                    &args,
+                );
+            } else {
+                println!("Could not find specified allele for the given germline")
+            }
         } else {
             println!("Could not find specified germline")
         }
     } else if let Some(x) = &args.a {
         single_stats(
             &args,
-            Peptidoform::pro_forma(x, None)
+            Peptidoform::pro_forma(x, &ontologies)
                 .unwrap()
+                .0
                 .into_simple_linear()
                 .unwrap(),
         )
@@ -338,10 +373,10 @@ fn main() {
             args.mass_mode,
             args.positions.as_deref(),
             args.display_csv,
+            &ontologies,
         );
     } else if let Some(file) = &args.second.csv {
-        let csv = rustyms::identification::csv::parse_csv(file, b',', None)
-            .expect("Failed to parse CSV file");
+        let csv = mzcore::csv::parse_csv(file, b',', None).expect("Failed to parse CSV file");
         let output = std::fs::File::create(
             Path::new(file).with_file_name(
                 Path::new(file)
@@ -366,12 +401,14 @@ fn main() {
                 .unwrap();
                 first = false;
             }
-            let a = Peptidoform::pro_forma(line.index_column("a").unwrap().0, None)
+            let a = Peptidoform::pro_forma(line.index_column("a").unwrap().0, &ontologies)
                 .unwrap()
+                .0
                 .into_simple_linear()
                 .unwrap();
-            let b = Peptidoform::pro_forma(line.index_column("b").unwrap().0, None)
+            let b = Peptidoform::pro_forma(line.index_column("b").unwrap().0, &ontologies)
                 .unwrap()
+                .0
                 .into_simple_linear()
                 .unwrap();
             let alignment = align(
@@ -401,8 +438,12 @@ fn main() {
     } else if let (Some((gene, allele)), Some(species)) =
         (&args.second.specific_gene, &args.species)
     {
-        if let Some(allele) = get_germline(*species, gene.clone(), *allele) {
-            display_germline(allele, &args);
+        if let Some(germline) = imgt.get_by_index(&(*species, gene.clone())) {
+            if let Some(allele) = germline.select_allele(*allele) {
+                display_germline(allele, &args);
+            } else {
+                println!("Could not find specified allele on the specified germline")
+            }
         } else {
             println!("Could not find specified germline")
         }
@@ -414,7 +455,7 @@ fn main() {
             genes: args.genes.clone(),
             allele: args.allele,
         };
-        for allele in selection.germlines() {
+        for allele in selection.germlines(&imgt) {
             if !first {
                 println!();
             } else {
@@ -423,7 +464,7 @@ fn main() {
             display_germline(allele, &args);
         }
     } else if let Some(path) = &args.second.file {
-        let sequences = rustyms::identification::FastaData::parse_file(path).unwrap();
+        let sequences = mzident::FastaData::parse_file(path).unwrap();
         let mut first = true;
         for sequence in sequences {
             if !first {
@@ -622,6 +663,7 @@ fn modification_stats(
     mass_mode: MassMode,
     positions: Option<&[(Vec<AminoAcid>, Position)]>,
     display_csv: bool,
+    ontologies: &Ontologies,
 ) {
     let precision = if full_number {
         None
@@ -629,7 +671,7 @@ fn modification_stats(
         Some(NUMBER_PRECISION)
     };
     match &**modification {
-        SimpleModificationInner::Mass(m)
+        SimpleModificationInner::Mass(_, m, _)
         | SimpleModificationInner::Gno {
             composition: GnoComposition::Weight(m),
             ..
@@ -644,16 +686,22 @@ fn modification_stats(
                 mass_mode.to_string(),
                 "Formula".to_string(),
             ]];
-            for (ontology, id, _name, modification) in
-                modification_search_mass(m.into_inner(), tolerance, positions, mass_mode, None)
-            {
+            for modification in modification_search_mass(
+                m.into_inner(),
+                tolerance,
+                positions,
+                mass_mode,
+                ontologies,
+            ) {
                 data.push([
                     modification.to_string(),
-                    format!(
-                        "{}{}",
-                        ontology.name(),
-                        id.map_or(String::new(), |id| format!(":{id}")),
-                    ),
+                    modification.description().map_or(String::new(), |d| {
+                        format!(
+                            "{}{}",
+                            d.ontology.name(),
+                            d.id().map_or(String::new(), |id| format!(":{id}")),
+                        )
+                    }),
                     display_mass(modification.formula().mass(mass_mode), false, precision),
                     modification.formula().hill_notation_fancy(),
                 ])
@@ -679,14 +727,16 @@ fn modification_stats(
 
             println!("\nAll ontology modifications with the same formula:");
             let mut data = vec![["Name".to_string(), "Id".to_string()]];
-            for (ontology, id, _name, modification) in modification_search_formula(f, None) {
+            for modification in modification_search_formula(f, ontologies) {
                 data.push([
                     modification.to_string(),
-                    format!(
-                        "{}{}",
-                        ontology.name(),
-                        id.map_or(String::new(), |id| format!("{id}:")),
-                    ),
+                    modification.description().map_or(String::new(), |d| {
+                        format!(
+                            "{}{}",
+                            d.ontology.name(),
+                            d.id().map_or(String::new(), |id| format!(":{id}")),
+                        )
+                    }),
                 ])
             }
             if data.len() > 1 {
@@ -712,7 +762,7 @@ fn modification_stats(
 
             println!("\nAll GNOme modifications with the same monosaccharide composition:");
             let mut data = vec![["Name".to_string(), "Definition".to_string()]];
-            for (_ontology, _id, _name, modification) in modification_search_glycan(g, true) {
+            for modification in modification_search_glycan(g, true, ontologies) {
                 if let SimpleModificationInner::Gno {
                     composition: GnoComposition::Topology(structure),
                     ..
@@ -905,8 +955,8 @@ fn display_single_mod(modification: &SimpleModificationInner, precision: Option<
             glycomeatlas,
         } => {
             display_id(id);
-            if let Some(score) = structure_score {
-                println!("Structure score: {}", score.to_string().blue());
+            if *structure_score != u16::MAX {
+                println!("Structure score: {}", structure_score.to_string().blue());
             }
             println!("Subsumption: {}", subsumption_level.to_string().green());
             println!(
@@ -980,11 +1030,7 @@ fn display_placement_rules(rules: &[PlacementRule]) {
                 print!(
                     "{}{}@{}",
                     if first { "" } else { ", " },
-                    Ontology::Psimod
-                        .find_id(*index, None)
-                        .unwrap()
-                        .to_string()
-                        .blue(),
+                    format!("MOD:{index:07}").blue(),
                     pos.to_string().green()
                 )
             }
@@ -1006,7 +1052,7 @@ fn display_id(id: &ModificationId) {
         "Ontology: {}, name: {}{}",
         id.ontology.to_string().purple(),
         id.name.green(),
-        id.id.map_or(String::new(), |id| format!(
+        id.id().map_or(String::new(), |id| format!(
             ", index: {}",
             id.to_string().blue()
         ))
@@ -1019,25 +1065,39 @@ fn display_id(id: &ModificationId) {
             "IDs: {}",
             id.cross_ids
                 .iter()
-                .map(|(r, i)| format!("{}{}{i}", r.dimmed(), ":".dimmed()))
+                .map(|(r, i)| if let Some(r) = r {
+                    format!("{}{}{i}", r.dimmed(), ":".dimmed())
+                } else {
+                    i.to_string()
+                })
                 .join(", ")
         );
     }
     if !id.synonyms.is_empty() {
-        println!("Synonyms: {}", id.synonyms.join(", "));
+        println!(
+            "Synonyms: {}",
+            id.synonyms
+                .iter()
+                .map(|(scope, syn)| if *scope == SynonymScope::Exact {
+                    syn.to_string()
+                } else {
+                    format!("{syn} ({scope})")
+                })
+                .join(", ")
+        );
     }
 }
 
 fn display_germline(allele: Allele, args: &Cli) {
     let scoring = AlignScoring::<'static> {
-        matrix: rustyms::align::matrix::BLOSUM90,
+        matrix: mzalign::matrix::BLOSUM90,
         ..Default::default()
     };
-    let alignment = rustyms::align::align::<1, &Peptidoform<UnAmbiguous>, &Peptidoform<UnAmbiguous>>(
+    let alignment = mzalign::align::<1, &Peptidoform<UnAmbiguous>, &Peptidoform<UnAmbiguous>>(
         allele.sequence,
         allele.sequence,
         scoring,
-        rustyms::align::AlignType::GLOBAL,
+        mzalign::AlignType::GLOBAL,
     );
     if args.display_fasta {
         println!(
@@ -1080,16 +1140,15 @@ fn display_sequence<A: AnnotatedPeptide + HasPeptidoform<SimpleLinear>>(
     args: &Cli,
 ) {
     let scoring = AlignScoring::<'static> {
-        matrix: rustyms::align::matrix::BLOSUM90,
+        matrix: mzalign::matrix::BLOSUM90,
         ..Default::default()
     };
-    let alignment =
-        rustyms::align::align::<1, &Peptidoform<SimpleLinear>, &Peptidoform<SimpleLinear>>(
-            a.cast_peptidoform(),
-            a.cast_peptidoform(),
-            scoring,
-            rustyms::align::AlignType::GLOBAL,
-        );
+    let alignment = mzalign::align::<1, &Peptidoform<SimpleLinear>, &Peptidoform<SimpleLinear>>(
+        a.cast_peptidoform(),
+        a.cast_peptidoform(),
+        scoring,
+        mzalign::AlignType::GLOBAL,
+    );
     if args.display_fasta {
         println!(
             ">{} REGIONS={} ANNOTATIONS={}",
@@ -1124,19 +1183,19 @@ fn align<'a, A: HasPeptidoform<SimpleLinear>, B: HasPeptidoform<SimpleLinear>>(
     kind: AlignmentKind,
 ) -> Alignment<A, B> {
     if kind.normal {
-        rustyms::align::align::<1, A, B>(seq_a, seq_b, scoring, ty)
+        mzalign::align::<1, A, B>(seq_a, seq_b, scoring, ty)
     } else if kind.mass_based_small {
-        rustyms::align::align::<2, A, B>(seq_a, seq_b, scoring, ty)
+        mzalign::align::<2, A, B>(seq_a, seq_b, scoring, ty)
     } else if kind.mass_based_huge {
-        rustyms::align::align::<{ u16::MAX }, A, B>(seq_a, seq_b, scoring, ty)
+        mzalign::align::<{ u16::MAX }, A, B>(seq_a, seq_b, scoring, ty)
     } else if kind.mass_based_long {
-        rustyms::align::align::<8, A, B>(seq_a, seq_b, scoring, ty)
+        mzalign::align::<8, A, B>(seq_a, seq_b, scoring, ty)
     } else {
-        rustyms::align::align::<4, A, B>(seq_a, seq_b, scoring, ty)
+        mzalign::align::<4, A, B>(seq_a, seq_b, scoring, ty)
     }
 }
 
-fn consecutive_align(
+fn consecutive_align<'imgt>(
     seq: &Peptidoform<SimpleLinear>,
     species: Option<HashSet<Species>>,
     chains: Option<HashSet<ChainType>>,
@@ -1144,7 +1203,8 @@ fn consecutive_align(
     scoring: AlignScoring,
     return_number: usize,
     kind: AlignmentKind,
-) -> ConsecutiveAlignment<'static, SimpleLinear> {
+    imgt: &'imgt CVIndex<IMGT>,
+) -> ConsecutiveAlignment<'imgt, SimpleLinear> {
     if kind.normal {
         par_consecutive_align::<1, &Peptidoform<SimpleLinear>>(
             seq,
@@ -1176,6 +1236,7 @@ fn consecutive_align(
             allele,
             scoring,
             return_number,
+            imgt,
         )
     } else if kind.mass_based_small {
         par_consecutive_align::<2, &Peptidoform<SimpleLinear>>(
@@ -1208,6 +1269,7 @@ fn consecutive_align(
             allele,
             scoring,
             return_number,
+            imgt,
         )
     } else if kind.mass_based_huge {
         par_consecutive_align::<{ u16::MAX }, &Peptidoform<SimpleLinear>>(
@@ -1240,6 +1302,7 @@ fn consecutive_align(
             allele,
             scoring,
             return_number,
+            imgt,
         )
     } else if kind.mass_based_long {
         par_consecutive_align::<8, &Peptidoform<SimpleLinear>>(
@@ -1272,6 +1335,7 @@ fn consecutive_align(
             allele,
             scoring,
             return_number,
+            imgt,
         )
     } else {
         par_consecutive_align::<4, &Peptidoform<SimpleLinear>>(
@@ -1304,6 +1368,7 @@ fn consecutive_align(
             allele,
             scoring,
             return_number,
+            imgt,
         )
     }
 }

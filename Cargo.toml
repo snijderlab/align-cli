@@ -18,16 +18,21 @@ clap = { version = "4.5", features = ["derive", "cargo"] }
 colored = "3"
 itertools = "0.14"
 rayon = "1.10"
-rustyms = { version = "0.10.0", default-features = false, features = [
-    "imgt",
-    "align",
-    "identification",
-    "rayon",
+mzcore = { version = "0.1.1", default-features = false, features = [
     "isotopes",
+    "coloured-errors",
 ] }
+mzident = "0.1.0"
+mzcv = "0.1.0"
+mzalign = {version = "0.1.0", features = ["rayon", "imgt"]}
+imgt = {version = "0.1.0", features = ["rayon"]}
 
 [patch.crates-io]
-rustyms = { path = "../mzcore/rustyms" }
+mzalign = { path = "../mzcore/mzalign" }
+mzcore = { path = "../mzcore/mzcore" }
+mzcv = { path = "../mzcore/mzcv" }
+mzident = { path = "../mzcore/mzident" }
+imgt = { path = "../mzcore/imgt" }
 
 [profile.release]
 debug = true

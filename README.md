@@ -38,7 +38,7 @@ A tool to help your manual mass spec inspection workflow. With alignments, isoba
    - Align a single peptide to the IMGT database `align <A> --imgt`.
    - Align a single peptide to the V-J-C domains in the IMGT database `align <A> --domain`.
    - Align a single peptide to a specific gene in IMGT database `align <A> --specific-gene <GENE>`.
-   - For any of these you can control if the peptides have to allign fully (`--global`), if you want to see the best possible subsequence alignment (`--local`), or a more elaborate mode (see `--help` and `--type`).
+   - For any of these you can control if the peptides have to align fully (`--global`), if you want to see the best possible subsequence alignment (`--local`), or a more elaborate mode (see `--help` and `--type`).
 2. Get information about a single sequence `align <sequence>`, this shows many basic properties (like mass) and generates isobaric sequences to this sequence.
    - Use `--fixed <MODIFICATIONS>` and `--variable <MODIFICATIONS>` to fine tune the generated isobaric sequences.
 3. Get information about a single modification `align --modification <MODIFICATION>`.

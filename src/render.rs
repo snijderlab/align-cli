@@ -1,8 +1,8 @@
 use colored::{Color, Colorize, Styles};
+use imgt::Allele;
 use itertools::Itertools;
-use rustyms::{
-    align::{Alignment, MatchType},
-    imgt::Allele,
+use mzalign::{Alignment, MatchType};
+use mzcore::{
     prelude::{AminoAcid, IsAminoAcid},
     quantities::Tolerance,
     sequence::{AnnotatedPeptide, Annotation, HasPeptidoform, Linear, Region},

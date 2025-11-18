@@ -1,8 +1,6 @@
-use rustyms::{
-    align::{Alignment, MatchType, Piece},
-    imgt::Allele,
-    sequence::{Annotation, Region},
-};
+use imgt::Allele;
+use mzalign::{Alignment, MatchType, Piece};
+use mzcore::sequence::{Annotation, Region};
 
 pub fn generate_annotations<A, B>(
     alignments: &[(Allele, Alignment<A, B>)],
@@ -108,43 +106,41 @@ pub fn generate_annotations<A, B>(
 
 #[cfg(test)]
 mod tests {
+    use imgt::Gene;
     use itertools::Itertools;
-    use rustyms::{
-        align::{AlignScoring, AlignType, Alignment, Side},
-        imgt::Gene,
-        prelude::Peptidoform,
-    };
+    use mzalign::{AlignScoring, AlignType, Alignment, Side};
+    use mzcore::{ontology::STATIC_ONTOLOGIES, prelude::Peptidoform};
 
     use crate::generate_annotations::generate_annotations;
 
     #[test]
     fn domain() {
-        let ab = Peptidoform::pro_forma("QVTLRESGPVRVKPTLTETLTCAGSGFPLSDTGVRAGSGFSLGDPGVGVSWIRQPPGKALEWLAHIFSDDEKFYNASLKTRLTVSKDTSKGQVVLRLTNMDPVDTATYFCARVGRGYDSESGFHDKAMVWFDSWGKGTQVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSCDK", None).unwrap().into_simple_linear().unwrap();
-        let ab1 = Peptidoform::pro_forma("GRGYDSESGFHDKAMVWFDSWGKGTQVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSCDK", None).unwrap().into_simple_linear().unwrap();
-        let ab2 = Peptidoform::pro_forma("ASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSCDK", None).unwrap().into_simple_linear().unwrap();
-        let v = rustyms::imgt::get_germline(
-            rustyms::imgt::Species::HomoSapiens,
-            Gene::from_imgt_name("IGHV2-26*01").unwrap(),
-            Some(1),
-        )
-        .unwrap();
-        let j = rustyms::imgt::get_germline(
-            rustyms::imgt::Species::HomoSapiens,
-            Gene::from_imgt_name("IGHJ5*01").unwrap(),
-            Some(1),
-        )
-        .unwrap();
-        let c = rustyms::imgt::get_germline(
-            rustyms::imgt::Species::HomoSapiens,
-            Gene::from_imgt_name("IGHG1*01").unwrap(),
-            Some(1),
-        )
-        .unwrap();
+        let ab = Peptidoform::pro_forma("QVTLRESGPVRVKPTLTETLTCAGSGFPLSDTGVRAGSGFSLGDPGVGVSWIRQPPGKALEWLAHIFSDDEKFYNASLKTRLTVSKDTSKGQVVLRLTNMDPVDTATYFCARVGRGYDSESGFHDKAMVWFDSWGKGTQVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSCDK", &STATIC_ONTOLOGIES).unwrap().0.into_simple_linear().unwrap();
+        let ab1 = Peptidoform::pro_forma("GRGYDSESGFHDKAMVWFDSWGKGTQVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSCDK", &STATIC_ONTOLOGIES).unwrap().0.into_simple_linear().unwrap();
+        let ab2 = Peptidoform::pro_forma("ASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSCDK", &STATIC_ONTOLOGIES).unwrap().0.into_simple_linear().unwrap();
+        let v = &imgt::STATIC_IMGT
+            .data()
+            .get(&imgt::Species::HomoSapiens)
+            .unwrap()
+            .find_allele(Gene::from_imgt_name("IGHV2-26*01").unwrap(), Some(1))
+            .unwrap();
+        let j = &imgt::STATIC_IMGT
+            .data()
+            .get(&imgt::Species::HomoSapiens)
+            .unwrap()
+            .find_allele(Gene::from_imgt_name("IGHJ5*01").unwrap(), Some(1))
+            .unwrap();
+        let c = &imgt::STATIC_IMGT
+            .data()
+            .get(&imgt::Species::HomoSapiens)
+            .unwrap()
+            .find_allele(Gene::from_imgt_name("IGHG1*01").unwrap(), Some(1))
+            .unwrap();
         let alignments = vec![
             (
                 v.clone(),
                 Alignment::create_from_path(
-                    &v,
+                    v,
                     &ab,
                     0,
                     0,
@@ -161,7 +157,7 @@ mod tests {
             (
                 j.clone(),
                 Alignment::create_from_path(
-                    &j,
+                    j,
                     &ab1,
                     0,
                     11,
@@ -178,7 +174,7 @@ mod tests {
             (
                 c.clone(),
                 Alignment::create_from_path(
-                    &c,
+                    c,
                     &ab2,
                     0,
                     0,

@@ -1,7 +1,9 @@
 use clap::{Args, Parser};
-use rustyms::{
-    align::{self, AlignScoring, AlignType, PairMode},
-    imgt::{AlleleSelection, ChainType, Gene, GeneType, Species},
+use imgt::{AlleleSelection, ChainType, Gene, GeneType, Species};
+use itertools::Itertools;
+use mzalign::{self, AlignScoring, AlignType, PairMode, matrix};
+use mzcore::{
+    ontology::STATIC_ONTOLOGIES,
     prelude::*,
     quantities::Tolerance,
     sequence::{
@@ -214,7 +216,7 @@ fn pair_parser(value: &str) -> Result<PairMode, &'static str> {
 }
 
 fn formula_parser(value: &str) -> Result<(Mass, usize), String> {
-    let target = Mass::new::<rustyms::system::dalton>(value.parse::<f64>().map_err(|err| {
+    let target = Mass::new::<mzcore::system::dalton>(value.parse::<f64>().map_err(|err| {
         format!("Given target mass for formula search is not a valid number: {err}")
     })?);
     Ok((
@@ -353,25 +355,25 @@ pub struct ScoringMatrix {
 impl ScoringMatrix {
     pub fn matrix(&self) -> &'static [[i8; AminoAcid::TOTAL_NUMBER]; AminoAcid::TOTAL_NUMBER] {
         if self.blosum45 {
-            align::matrix::BLOSUM45
+            matrix::BLOSUM45
         } else if self.blosum50 {
-            align::matrix::BLOSUM50
+            matrix::BLOSUM50
         } else if self.blosum62 {
-            align::matrix::BLOSUM62
+            matrix::BLOSUM62
         } else if self.blosum80 {
-            align::matrix::BLOSUM80
+            matrix::BLOSUM80
         } else if self.blosum90 {
-            align::matrix::BLOSUM90
+            matrix::BLOSUM90
         } else if self.identity {
-            align::matrix::IDENTITY
+            matrix::IDENTITY
         } else if self.pam30 {
-            align::matrix::PAM30
+            matrix::PAM30
         } else if self.pam70 {
-            align::matrix::PAM70
+            matrix::PAM70
         } else if self.pam250 {
-            align::matrix::PAM250
+            matrix::PAM250
         } else {
-            align::matrix::BLOSUM62
+            matrix::BLOSUM62
         }
     }
 }
@@ -409,19 +411,19 @@ pub struct AlignmentType {
 }
 
 impl AlignmentType {
-    pub fn ty(&self) -> rustyms::align::AlignType {
+    pub fn ty(&self) -> mzalign::AlignType {
         if let Some(ty) = self.r#type {
             ty
         } else if self.local {
-            rustyms::align::AlignType::LOCAL
+            mzalign::AlignType::LOCAL
         } else if self.semi_global {
-            rustyms::align::AlignType::GLOBAL_B
+            mzalign::AlignType::GLOBAL_B
         } else if self.semi_global_a {
-            rustyms::align::AlignType::GLOBAL_A
+            mzalign::AlignType::GLOBAL_A
         } else if self.either_global {
-            rustyms::align::AlignType::EITHER_GLOBAL
+            mzalign::AlignType::EITHER_GLOBAL
         } else {
-            rustyms::align::AlignType::GLOBAL
+            mzalign::AlignType::GLOBAL
         }
     }
 }
@@ -431,7 +433,7 @@ impl AlignmentType {
 pub struct SecondSelection {
     /// Second sequence
     #[arg()]
-    pub b: Option<String>,
+    pub b: Vec<String>,
 
     /// A fasta database file to open to align the sequence to
     #[arg(short, long)]
@@ -488,8 +490,9 @@ fn options_parse(input: &str) -> Result<IsobaricNumber, &'static str> {
     }
 }
 fn peptide_parser(input: &str) -> Result<Peptidoform<SimpleLinear>, String> {
-    Peptidoform::pro_forma(input, None)
-        .map_err(|e| e.to_string())?
+    Peptidoform::pro_forma(input, &STATIC_ONTOLOGIES)
+        .map_err(|e| e.iter().map(ToString::to_string).join("\n"))?
+        .0
         .into_simple_linear()
         .ok_or("Not a simple peptide".to_string())
 }
@@ -611,25 +614,25 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
             .map(|m| {
                 if let Some((head, tail)) = m.split_once('@') {
                     let modification =
-                    SimpleModificationInner::parse_pro_forma(head, 0..head.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.0.defined() {
+                    SimpleModificationInner::pro_forma(head, &mut Vec::new(), &mut Vec::new(), &STATIC_ONTOLOGIES).map_err(|e| e.iter().map(ToString::to_string).join("\n")).and_then(|m| if let Some(d) = m.0.0.defined() {
                         Ok(d) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
                     )?;
                     let rule = if let Some((aa, position)) = tail.split_once('-') {
                         if let Some(aa) = parse_aa(aa)? {
-                            PlacementRule::AminoAcid(aa, parse_position(position)?)
+                            PlacementRule::AminoAcid(aa.into(), parse_position(position)?)
                         } else {
                             PlacementRule::Terminal(parse_position(position)?)
                         }
                     } else if let Some(aa) = parse_aa(tail)? {
-                            PlacementRule::AminoAcid(aa, Position::Anywhere)
+                            PlacementRule::AminoAcid(aa.into(), Position::Anywhere)
                         } else {
                             return Err("Cannot have a modification rule that allows a modification on all position on all amino acids".to_string())
                         };
                     Ok((modification, Some(rule)))
                 } else {
-                    SimpleModificationInner::parse_pro_forma(m, 0..m.len(), &mut Vec::new(), &mut Vec::new(), None).map_err(|e| e.to_string()).and_then(|m| if let Some(d) = m.0.defined() {
+                    SimpleModificationInner::pro_forma(m,  &mut Vec::new(), &mut Vec::new(),  &STATIC_ONTOLOGIES).map_err(|e| e.iter().map(ToString::to_string).join("\n")).and_then(|m| if let Some(d) = m.0.0.defined() {
                         Ok((d, None)) } else {
                             Err("Can not define ambiguous modifications for the modifications parameter".to_string())
                         }
@@ -645,19 +648,18 @@ fn modification_parse(input: &str) -> Result<SimpleModification, String> {
     if input.is_empty() {
         Err("Empty".to_string())
     } else {
-        SimpleModificationInner::parse_pro_forma(
+        SimpleModificationInner::pro_forma(
             input,
-            0..input.len(),
             &mut Vec::new(),
             &mut Vec::new(),
-            None,
+            &STATIC_ONTOLOGIES,
         )
-        .map(|(m, _)| match m {
+        .map(|((m, _), _)| match m {
             ReturnModification::Defined(d) => d,
             _ => {
                 panic!("Can not define ambiguous modifications for the modifications parameter")
             }
         })
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.iter().map(ToString::to_string).join("\n"))
     }
 }
