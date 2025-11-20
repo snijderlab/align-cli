@@ -12,8 +12,8 @@ use mzcore::{
     prelude::*,
     quantities::{Multi, Tolerance},
     sequence::{
-        AnnotatedPeptide, GnoComposition, HasPeptidoform, LinkerSpecificity, ModificationId,
-        PlacementRule, Position, SimpleLinear, SimpleModification, SimpleModificationInner,
+        AnnotatedPeptide, GnoComposition, HasPeptidoform, Linear, LinkerSpecificity,
+        ModificationId, PlacementRule, Position, SimpleModification, SimpleModificationInner,
         UnAmbiguous, modification_search_formula, modification_search_glycan,
         modification_search_mass,
     },
@@ -51,7 +51,7 @@ fn main() {
         let a = Peptidoform::pro_forma(a, &ontologies)
             .unwrap()
             .0
-            .into_simple_linear()
+            .into_linear()
             .unwrap();
         let b = b
             .iter()
@@ -59,7 +59,7 @@ fn main() {
                 Peptidoform::pro_forma(b, &ontologies)
                     .unwrap()
                     .0
-                    .into_simple_linear()
+                    .into_linear()
                     .unwrap()
             })
             .collect::<Vec<_>>();
@@ -81,11 +81,15 @@ fn main() {
                 &args,
             );
         } else {
-            let index = AlignIndex::<4, &Peptidoform<SimpleLinear>>::new(
+            let index = AlignIndex::<4, &Peptidoform<Linear>>::new(
                 std::iter::once(&a).chain(b.iter()),
                 MassMode::Monoisotopic,
             );
-            let mmsas = index.multi_align(Some(0.6), args.scoring(), args.alignment_type.ty());
+            let mmsas = index.multi_align(
+                args.multi_distance,
+                args.scoring(),
+                args.alignment_type.ty(),
+            );
             for mmsa in mmsas {
                 println!("{mmsa}");
             }
@@ -95,7 +99,7 @@ fn main() {
         let search_sequence = Peptidoform::pro_forma(b, &ontologies)
             .unwrap()
             .0
-            .into_simple_linear()
+            .into_linear()
             .unwrap();
         let mut alignments: Vec<_> = sequences
             .into_par_iter()
@@ -166,7 +170,7 @@ fn main() {
         let seq_b = Peptidoform::pro_forma(x, &ontologies)
             .unwrap()
             .0
-            .into_simple_linear()
+            .into_linear()
             .unwrap();
         let mut alignments: Vec<_> = Selection {
             species: args.species.map(|s| HashSet::from([s])),
@@ -251,7 +255,7 @@ fn main() {
             &Peptidoform::pro_forma(x, &ontologies)
                 .unwrap()
                 .0
-                .into_simple_linear()
+                .into_linear()
                 .unwrap(),
             args.species.map(|s| HashSet::from([s])),
             args.chains.clone(),
@@ -327,7 +331,7 @@ fn main() {
                 let b = Peptidoform::pro_forma(x, &ontologies)
                     .unwrap()
                     .0
-                    .into_simple_linear()
+                    .into_linear()
                     .unwrap();
                 let alignment = align(
                     allele.sequence,
@@ -362,7 +366,7 @@ fn main() {
             Peptidoform::pro_forma(x, &ontologies)
                 .unwrap()
                 .0
-                .into_simple_linear()
+                .into_linear()
                 .unwrap(),
         )
     } else if let Some(modification) = &args.modification {
@@ -404,12 +408,12 @@ fn main() {
             let a = Peptidoform::pro_forma(line.index_column("a").unwrap().0, &ontologies)
                 .unwrap()
                 .0
-                .into_simple_linear()
+                .into_linear()
                 .unwrap();
             let b = Peptidoform::pro_forma(line.index_column("b").unwrap().0, &ontologies)
                 .unwrap()
                 .0
-                .into_simple_linear()
+                .into_linear()
                 .unwrap();
             let alignment = align(
                 &a,
@@ -510,7 +514,7 @@ fn main() {
     }
 }
 
-fn single_stats(args: &Cli, seq: Peptidoform<SimpleLinear>) {
+fn single_stats(args: &Cli, seq: Peptidoform<Linear>) {
     let full_formulas = seq.formulas().unique();
     let bare_formulas = seq.bare_formulas().unique();
     print_multi_formula(&full_formulas, "Full", "", args.full_number);
@@ -1134,16 +1138,12 @@ fn display_germline(allele: Allele, args: &Cli) {
     );
 }
 
-fn display_sequence<A: AnnotatedPeptide + HasPeptidoform<SimpleLinear>>(
-    name: String,
-    a: A,
-    args: &Cli,
-) {
+fn display_sequence<A: AnnotatedPeptide + HasPeptidoform<Linear>>(name: String, a: A, args: &Cli) {
     let scoring = AlignScoring::<'static> {
         matrix: mzalign::matrix::BLOSUM90,
         ..Default::default()
     };
-    let alignment = mzalign::align::<1, &Peptidoform<SimpleLinear>, &Peptidoform<SimpleLinear>>(
+    let alignment = mzalign::align::<1, &Peptidoform<Linear>, &Peptidoform<Linear>>(
         a.cast_peptidoform(),
         a.cast_peptidoform(),
         scoring,
@@ -1175,7 +1175,7 @@ fn display_sequence<A: AnnotatedPeptide + HasPeptidoform<SimpleLinear>>(
     );
 }
 
-fn align<'a, A: HasPeptidoform<SimpleLinear>, B: HasPeptidoform<SimpleLinear>>(
+fn align<'a, A: HasPeptidoform<Linear>, B: HasPeptidoform<Linear>>(
     seq_a: A,
     seq_b: B,
     scoring: AlignScoring<'a>,
@@ -1196,7 +1196,7 @@ fn align<'a, A: HasPeptidoform<SimpleLinear>, B: HasPeptidoform<SimpleLinear>>(
 }
 
 fn consecutive_align<'imgt>(
-    seq: &Peptidoform<SimpleLinear>,
+    seq: &Peptidoform<Linear>,
     species: Option<HashSet<Species>>,
     chains: Option<HashSet<ChainType>>,
     allele: AlleleSelection,
@@ -1204,9 +1204,9 @@ fn consecutive_align<'imgt>(
     return_number: usize,
     kind: AlignmentKind,
     imgt: &'imgt CVIndex<IMGT>,
-) -> ConsecutiveAlignment<'imgt, SimpleLinear> {
+) -> ConsecutiveAlignment<'imgt, Linear> {
     if kind.normal {
-        par_consecutive_align::<1, &Peptidoform<SimpleLinear>>(
+        par_consecutive_align::<1, &Peptidoform<Linear>>(
             seq,
             &[
                 (
@@ -1239,7 +1239,7 @@ fn consecutive_align<'imgt>(
             imgt,
         )
     } else if kind.mass_based_small {
-        par_consecutive_align::<2, &Peptidoform<SimpleLinear>>(
+        par_consecutive_align::<2, &Peptidoform<Linear>>(
             seq,
             &[
                 (
@@ -1272,7 +1272,7 @@ fn consecutive_align<'imgt>(
             imgt,
         )
     } else if kind.mass_based_huge {
-        par_consecutive_align::<{ u16::MAX }, &Peptidoform<SimpleLinear>>(
+        par_consecutive_align::<{ u16::MAX }, &Peptidoform<Linear>>(
             seq,
             &[
                 (
@@ -1305,7 +1305,7 @@ fn consecutive_align<'imgt>(
             imgt,
         )
     } else if kind.mass_based_long {
-        par_consecutive_align::<8, &Peptidoform<SimpleLinear>>(
+        par_consecutive_align::<8, &Peptidoform<Linear>>(
             seq,
             &[
                 (
@@ -1338,7 +1338,7 @@ fn consecutive_align<'imgt>(
             imgt,
         )
     } else {
-        par_consecutive_align::<4, &Peptidoform<SimpleLinear>>(
+        par_consecutive_align::<4, &Peptidoform<Linear>>(
             seq,
             &[
                 (

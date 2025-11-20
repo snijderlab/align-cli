@@ -186,6 +186,10 @@ pub struct Cli {
     // Contains the mass and number of digits
     #[arg(long = "formula", value_parser=formula_parser)]
     pub formula_target: Option<(Mass, usize)>,
+
+    /// The maximal distance to group when doing MMSA (mass-based multiple sequence alignment)
+    #[arg(long)]
+    pub multi_distance: Option<f64>,
 }
 
 impl Cli {
