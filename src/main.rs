@@ -20,6 +20,7 @@ use mzcore::{
     system::{Mass, dalton},
 };
 use mzcv::{CVIndex, SynonymScope};
+use mzident::{IdentifiedPeptidoform, PeptidoformPresent};
 use rayon::prelude::*;
 use std::{
     collections::HashSet,
@@ -468,15 +469,23 @@ fn main() {
             display_germline(allele, &args);
         }
     } else if let Some(path) = &args.second.file {
-        let sequences = mzident::FastaData::parse_file(path).unwrap();
-        let mut first = true;
-        for sequence in sequences {
-            if !first {
-                println!();
-            } else {
-                first = false;
-            }
-            display_sequence(sequence.identifier().to_string(), sequence, &args);
+        let sequences = mzident::open_identified_peptidoforms_file(path, &ontologies, false)
+            .unwrap()
+            .filter_map(|p| p.map(|p| p.into_linear()).transpose())
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        println!("{} sequences", sequences.len());
+        let index = AlignIndex::<4, IdentifiedPeptidoform<Linear, PeptidoformPresent>>::new(
+            sequences,
+            args.mass_mode,
+        );
+        let mmsas = index.multi_align(
+            args.multi_distance,
+            args.scoring(),
+            args.alignment_type.ty(),
+        );
+        for mmsa in mmsas {
+            println!("{mmsa}");
         }
     } else if let Some(target) = args.formula_target {
         const DEFAULT_ELEMENTS: &[(Element, Option<NonZeroU16>)] = &[
