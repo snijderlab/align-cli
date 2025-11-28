@@ -1,7 +1,7 @@
 use clap::{Args, Parser};
 use imgt::{AlleleSelection, ChainType, Gene, GeneType, Species};
 use itertools::Itertools;
-use mzalign::{self, AlignScoring, AlignType, PairMode, matrix};
+use mzalign::{self, AlignScoring, AlignType, MultiAlignType, PairMode, Side, matrix};
 use mzcore::{
     ontology::STATIC_ONTOLOGIES,
     prelude::*,
@@ -428,6 +428,22 @@ impl AlignmentType {
             mzalign::AlignType::EITHER_GLOBAL
         } else {
             mzalign::AlignType::GLOBAL
+        }
+    }
+
+    pub fn multi_ty(&self) -> mzalign::MultiAlignType {
+        let ty = self.ty();
+        MultiAlignType {
+            left: if ty.left == Side::EitherGlobal {
+                mzalign::MultiAlignSide::EitherGlobal
+            } else {
+                mzalign::MultiAlignSide::Global
+            },
+            right: if ty.right == Side::EitherGlobal {
+                mzalign::MultiAlignSide::EitherGlobal
+            } else {
+                mzalign::MultiAlignSide::Global
+            },
         }
     }
 }

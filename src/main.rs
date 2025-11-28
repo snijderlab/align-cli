@@ -3,7 +3,7 @@ use colored::{Color, Colorize, Styles};
 use imgt::{Allele, AlleleSelection, ChainType, GeneType, IMGT, Selection, Species};
 use itertools::Itertools;
 use mzalign::{
-    AlignIndex, AlignScoring, AlignType, Alignment, ConsecutiveAlignment, Side,
+    AlignIndex, AlignScoring, AlignType, Alignment, ConsecutiveAlignment, MultiAlignment, Side,
     par_consecutive_align,
 };
 use mzcore::{
@@ -86,14 +86,15 @@ fn main() {
                 std::iter::once(&a).chain(b.iter()),
                 MassMode::Monoisotopic,
             );
-            let mmsas = index.multi_align(
+            let before_mmsas = std::time::Instant::now();
+            let mmsas = index.par_multi_align(
                 args.multi_distance,
                 args.scoring(),
-                args.alignment_type.ty(),
+                args.alignment_type.multi_ty(),
             );
-            for mmsa in mmsas {
-                println!("{mmsa}");
-            }
+            let runtime = before_mmsas.elapsed();
+            display_mmsas(&mmsas);
+            println!("{} ns", runtime.as_nanos())
         }
     } else if let (Some(b), Some(path)) = (&args.a, &args.second.file) {
         let sequences = mzident::FastaData::parse_file(path).unwrap();
@@ -479,14 +480,15 @@ fn main() {
             sequences,
             args.mass_mode,
         );
-        let mmsas = index.multi_align(
+        let before_mmsas = std::time::Instant::now();
+        let mmsas = index.par_multi_align(
             args.multi_distance,
             args.scoring(),
-            args.alignment_type.ty(),
+            args.alignment_type.multi_ty(),
         );
-        for mmsa in mmsas {
-            println!("{mmsa}");
-        }
+        let runtime = before_mmsas.elapsed();
+        display_mmsas(&mmsas);
+        println!("{} ns", runtime.as_nanos());
     } else if let Some(target) = args.formula_target {
         const DEFAULT_ELEMENTS: &[(Element, Option<NonZeroU16>)] = &[
             (Element::H, None),
@@ -1379,5 +1381,20 @@ fn consecutive_align<'imgt>(
             return_number,
             imgt,
         )
+    }
+}
+
+fn display_mmsas(mmsas: &[MultiAlignment<impl HasPeptidoform<Linear>>]) {
+    for mmsa in mmsas {
+        println!("{mmsa}");
+        let variance = mmsa.variance();
+        for (index, pos) in variance.iter().enumerate() {
+            print!("{index}: ");
+            for ((aa, len), (doc, alc)) in pos.iter().sorted_by(|a, b| a.1.0.cmp(&b.1.0)) {
+                print!(" {}({len}): {doc} {alc:.2},", aa.aminoacid)
+            }
+            println!();
+        }
+        println!();
     }
 }
