@@ -5,7 +5,7 @@ use mzalign::{Alignment, MatchType};
 use mzcore::{
     prelude::{AminoAcid, IsAminoAcid},
     quantities::Tolerance,
-    sequence::{AnnotatedPeptide, Annotation, HasPeptidoform, Linear, Region},
+    sequence::{AnnotatedPeptidoform, Annotation, HasPeptidoform, Linear, Region},
     system::Mass,
 };
 use std::cmp::Ordering;
@@ -29,7 +29,7 @@ enum StepType {
 pub fn show_annotated_mass_alignment<
     A: HasPeptidoform<Linear>,
     B: HasPeptidoform<Linear>,
-    Annotated: AnnotatedPeptide,
+    Annotated: AnnotatedPeptidoform,
 >(
     alignment: &Alignment<A, B>,
     imgt: Option<&Annotated>,
@@ -125,7 +125,7 @@ pub fn show_chained_annotated_mass_alignment<
 fn show_alignment_inner<
     A: HasPeptidoform<Linear>,
     B: HasPeptidoform<Linear>,
-    Annotated: AnnotatedPeptide,
+    Annotated: AnnotatedPeptidoform,
 >(
     writer: &mut CombinedLines,
     alignment: &Alignment<A, B>,

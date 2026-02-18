@@ -12,15 +12,15 @@ use mzcore::{
     prelude::*,
     quantities::{Multi, Tolerance},
     sequence::{
-        AnnotatedPeptide, GnoComposition, HasPeptidoform, Linear, LinkerSpecificity,
-        ModificationId, PlacementRule, Position, SimpleModification, SimpleModificationInner,
-        UnAmbiguous, modification_search_formula, modification_search_glycan,
-        modification_search_mass,
+        AnnotatedPeptidoform, GnoComposition, HasPeptidoform, Linear, LinkerLength,
+        LinkerSpecificity, ModificationId, PlacementRule, Position, SimpleModification,
+        SimpleModificationInner, UnAmbiguous, modification_search_formula,
+        modification_search_glycan, modification_search_mass,
     },
     system::{Mass, dalton},
 };
 use mzcv::{CVIndex, SynonymScope};
-use mzident::{IdentifiedPeptidoform, PeptidoformPresent};
+use mzident::{PSM, PeptidoformPresent};
 use rayon::prelude::*;
 use std::{
     collections::HashSet,
@@ -470,16 +470,14 @@ fn main() {
             display_germline(allele, &args);
         }
     } else if let Some(path) = &args.second.file {
-        let sequences = mzident::open_identified_peptidoforms_file(path, &ontologies, false)
+        let sequences = mzident::open_psm_file(path, &ontologies, false)
             .unwrap()
             .filter_map(|p| p.map(|p| p.into_linear()).transpose())
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         println!("{} sequences", sequences.len());
-        let index = AlignIndex::<4, IdentifiedPeptidoform<Linear, PeptidoformPresent>>::new(
-            sequences,
-            args.mass_mode,
-        );
+        let index =
+            AlignIndex::<4, PSM<Linear, PeptidoformPresent>>::new(sequences, args.mass_mode);
         let before_mmsas = std::time::Instant::now();
         let mmsas = index.par_multi_align(
             args.multi_distance,
@@ -868,8 +866,12 @@ fn display_single_mod(modification: &SimpleModificationInner, precision: Option<
             ..
         } => {
             display_id(id);
-            if let Some(length) = length {
-                println!("Length: {}", length);
+            match length {
+                LinkerLength::Unknown => (),
+                LinkerLength::Discreet(v) => {
+                    println!("Length: {}", v.iter().map(|v| v.0).join(", "))
+                }
+                LinkerLength::InclusiveRange(s, e) => println!("Length: {}–{}", s.0, e.0),
             }
             println!("Placement rules: ");
             for specificity in specificities {
@@ -1149,7 +1151,11 @@ fn display_germline(allele: Allele, args: &Cli) {
     );
 }
 
-fn display_sequence<A: AnnotatedPeptide + HasPeptidoform<Linear>>(name: String, a: A, args: &Cli) {
+fn display_sequence<A: AnnotatedPeptidoform + HasPeptidoform<Linear>>(
+    name: String,
+    a: A,
+    args: &Cli,
+) {
     let scoring = AlignScoring::<'static> {
         matrix: mzalign::matrix::BLOSUM90,
         ..Default::default()

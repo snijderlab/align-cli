@@ -250,8 +250,6 @@ dependencies = [
 [[package]]
 name = "context_error"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8f8d9ab6e8da8222081dd5baab5e4082c94310325f21fa792b29a6c408d8d1f"
 dependencies = [
  "colored",
  "serde",
@@ -600,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "mzcv"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bincode",
  "chrono",
@@ -613,9 +611,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.62.1"
+version = "0.63.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff2f39fffa9d3a3ffbe5e2adba2a1c61680824f49f69670291f4b9966e1681cf"
+checksum = "81bd481b366e63f0cf4efc0c7b68db9eab44de2039f03c9b25c52f59fa1d8b2e"
 dependencies = [
  "base64-simd",
  "bitflags",
@@ -641,6 +639,7 @@ dependencies = [
  "itertools",
  "mzannotate",
  "mzcore",
+ "mzcv",
  "ordered-float",
  "paste",
  "regex",

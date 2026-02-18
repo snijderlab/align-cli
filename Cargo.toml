@@ -23,7 +23,7 @@ mzcore = { version = "0.1.1", default-features = false, features = [
     "coloured-errors",
 ] }
 mzident = "0.1.0"
-mzcv = "0.1.0"
+mzcv = "0.2.0"
 mzalign = {version = "0.1.0", features = ["rayon", "imgt"]}
 imgt = {version = "0.1.0", features = ["rayon"]}
 
