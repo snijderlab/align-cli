@@ -190,6 +190,10 @@ pub struct Cli {
     /// The maximal distance to group when doing MMSA (mass-based multiple sequence alignment)
     #[arg(long)]
     pub multi_distance: Option<f64>,
+
+    /// If turned on shows the IMGT accession
+    #[arg(long)]
+    pub display_imgt_accession: bool,
 }
 
 impl Cli {

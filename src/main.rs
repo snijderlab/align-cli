@@ -1118,10 +1118,15 @@ fn display_germline(allele: Allele, args: &Cli) {
     );
     if args.display_fasta {
         println!(
-            ">{} {} OS={} REGIONS={} ANNOTATIONS={}",
+            ">{} {}{} OS={} REGIONS={} ANNOTATIONS={}",
             allele.name().purple(),
             allele.species.common_name().purple(),
             allele.species.scientific_name(),
+            if args.display_imgt_accession {
+                format!(" {}", allele.acc)
+            } else {
+                String::new()
+            },
             allele
                 .regions()
                 .iter()
@@ -1135,10 +1140,15 @@ fn display_germline(allele: Allele, args: &Cli) {
         );
     } else {
         println!(
-            "{} {} {}",
+            "{} {} {}{}",
             allele.species.scientific_name().to_string().purple(),
             allele.species.common_name(),
             format!("{} / {}", allele.name(), allele.fancy_name()).purple(),
+            if args.display_imgt_accession {
+                format!(" {}", allele.acc)
+            } else {
+                String::new()
+            },
         );
     }
     show_annotated_mass_alignment(
