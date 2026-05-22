@@ -709,11 +709,7 @@ fn modification_stats(
                 data.push([
                     modification.to_string(),
                     modification.description().map_or(String::new(), |d| {
-                        format!(
-                            "{}{}",
-                            d.ontology.name(),
-                            d.id().map_or(String::new(), |id| format!(":{id}")),
-                        )
+                        format!("{}:{}", d.ontology.name(), d.id(),)
                     }),
                     display_mass(modification.formula().mass(mass_mode), false, precision),
                     modification.formula().hill_notation_fancy(),
@@ -744,11 +740,7 @@ fn modification_stats(
                 data.push([
                     modification.to_string(),
                     modification.description().map_or(String::new(), |d| {
-                        format!(
-                            "{}{}",
-                            d.ontology.name(),
-                            d.id().map_or(String::new(), |id| format!(":{id}")),
-                        )
+                        format!("{}:{}", d.ontology.name(), d.id(),)
                     }),
                 ])
             }
@@ -868,7 +860,7 @@ fn display_single_mod(modification: &SimpleModificationInner, precision: Option<
             display_id(id);
             match length {
                 LinkerLength::Unknown => (),
-                LinkerLength::Discreet(v) => {
+                LinkerLength::Discrete(v) => {
                     println!("Length: {}", v.iter().map(|v| v.0).join(", "))
                 }
                 LinkerLength::InclusiveRange(s, e) => println!("Length: {}–{}", s.0, e.0),
@@ -1066,13 +1058,10 @@ fn display_placement_rules(rules: &[PlacementRule]) {
 
 fn display_id(id: &ModificationId) {
     println!(
-        "Ontology: {}, name: {}{}",
+        "Ontology: {}, name: {}, index: {}",
         id.ontology.to_string().purple(),
         id.name.green(),
-        id.id().map_or(String::new(), |id| format!(
-            ", index: {}",
-            id.to_string().blue()
-        ))
+        id.id()
     );
     if !id.description.is_empty() {
         println!("{}", id.description);
