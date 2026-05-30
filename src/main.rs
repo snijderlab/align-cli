@@ -1069,14 +1069,7 @@ fn display_id(id: &ModificationId) {
     if !id.cross_ids.is_empty() {
         println!(
             "IDs: {}",
-            id.cross_ids
-                .iter()
-                .map(|(r, i)| if let Some(r) = r {
-                    format!("{}{}{i}", r.dimmed(), ":".dimmed())
-                } else {
-                    i.to_string()
-                })
-                .join(", ")
+            id.cross_ids.iter().map(|c| c.to_string()).join(", ")
         );
     }
     if !id.synonyms.is_empty() {
@@ -1090,6 +1083,18 @@ fn display_id(id: &ModificationId) {
                     format!("{syn} ({scope})")
                 })
                 .join(", ")
+        );
+    }
+    if !id.parents.is_empty() {
+        println!(
+            "Parents: {}",
+            id.parents.iter().map(|c| c.to_string()).join(", ")
+        );
+    }
+    if !id.children.is_empty() {
+        println!(
+            "Children: {}",
+            id.children.iter().map(|c| c.to_string()).join(", ")
         );
     }
 }
