@@ -647,7 +647,7 @@ fn modifications_parse(input: &str) -> Result<Modifications, String> {
                         if let Some(aa) = parse_aa(aa)? {
                             PlacementRule::AminoAcid(aa.into(), parse_position(position)?)
                         } else {
-                            PlacementRule::Terminal(parse_position(position)?)
+                            PlacementRule::Position(parse_position(position)?)
                         }
                     } else if let Some(aa) = parse_aa(tail)? {
                             PlacementRule::AminoAcid(aa.into(), Position::Anywhere)

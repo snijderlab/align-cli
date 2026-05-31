@@ -1043,14 +1043,13 @@ fn display_placement_rules(rules: &[PlacementRule]) {
                     pos.to_string().green()
                 )
             }
-            PlacementRule::Terminal(pos) => {
+            PlacementRule::Position(pos) => {
                 print!(
                     "{}{}",
                     if first { "" } else { ", " },
                     pos.to_string().green()
                 )
             }
-            PlacementRule::Anywhere => print!("{}", "Anywhere".green()),
         }
         first = false;
     }
