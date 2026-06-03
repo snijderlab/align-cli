@@ -352,6 +352,9 @@ pub struct ScoringMatrix {
     /// PAM30 matrix
     #[arg(long)]
     pub pam30: bool,
+    /// PAM30MS matrix
+    #[arg(long)]
+    pub pam30ms: bool,
     /// PAM70 matrix
     #[arg(long)]
     pub pam70: bool,
@@ -376,6 +379,8 @@ impl ScoringMatrix {
             matrix::IDENTITY
         } else if self.pam30 {
             matrix::PAM30
+        } else if self.pam30ms {
+            matrix::PAM30MS
         } else if self.pam70 {
             matrix::PAM70
         } else if self.pam250 {
